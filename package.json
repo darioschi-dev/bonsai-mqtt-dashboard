@@ -1,0 +1,21 @@
+{
+  "name": "bonsai-mqtt-dashboard",
+  "version": "1.0.0",
+  "description": "",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/darioschi-dev/bonsai-mqtt-dashboard.git"
+  },
+  "private": true,
+  "dependencies": {
+    "dotenv": "^16.0.0",
+    "express": "^4.18.0",
+    "mqtt": "^5.0.0"
+  }
+}

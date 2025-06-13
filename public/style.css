@@ -1,0 +1,107 @@
+:root {
+    --bg-color: #f5f9f6;
+    --text-color: #000;
+    --card-bg: #fff;
+    --badge-online: #28a745;
+    --badge-offline: #dc3545;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg-color: #121212;
+        --text-color: #f0f0f0;
+        --card-bg: #1e1e1e;
+        --badge-online: #66ff66;
+        --badge-offline: #ff6666;
+    }
+}
+
+body {
+    font-family: 'Segoe UI', sans-serif;
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    padding: 2rem;
+    margin: 0;
+    max-width: 900px;
+    margin-left: auto;
+    margin-right: auto;
+}
+h1 {
+    text-align: center;
+    margin-bottom: 1rem;
+}
+.controls {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+.controls button {
+    font-size: 1rem;
+    padding: 0.8rem 2rem;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    flex: 1 1 140px;
+    max-width: 180px;
+}
+.btn-on { background-color: #28a745; color: white; }
+.btn-off { background-color: #dc3545; color: white; }
+.status-section {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+.card {
+    background-color: var(--card-bg);
+    border-radius: 8px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    padding: 1rem 1.5rem;
+    min-width: 150px;
+    text-align: center;
+    flex: 1 1 200px;
+}
+.card h3 {
+    margin-top: 0.5rem;
+    margin-bottom: 0.3rem;
+}
+.card .value {
+    font-size: 1.4rem;
+    font-weight: bold;
+}
+.badge {
+    display: inline-block;
+    padding: 0.3rem 0.6rem;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: bold;
+    color: white;
+}
+.online { background-color: var(--badge-online); }
+.offline { background-color: var(--badge-offline); }
+.toast {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: #333;
+    color: #fff;
+    padding: 10px 20px;
+    border-radius: 4px;
+    opacity: 0.9;
+    z-index: 9999;
+}
+#humidity-chart-container {
+    max-width: 300px;
+    margin: 1rem auto;
+}
+#humidity-history-container {
+    max-width: 600px;
+    margin: 2rem auto;
+}
+.toggle-container {
+    margin-top: 2rem;
+    text-align: center;
+}

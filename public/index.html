@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>Bonsai MQTT Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#28a745" />
+    <link rel="manifest" href="/manifest.json">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <link rel="stylesheet" href="/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+<h1><i class="fas fa-seedling"></i> Bonsai MQTT Dashboard <span id="esp-status" class="badge offline">Offline</span></h1>
+
+<div class="controls">
+    <button class="btn-on" onclick="controllaPompa('on')">Accendi</button>
+    <button class="btn-off" onclick="controllaPompa('off')">Spegni</button>
+</div>
+
+<div class="status-section">
+    <div class="card"><i class="fas fa-power-off"></i><h3>Pompa</h3><div class="value" id="pump">--</div></div>
+    <div class="card"><i class="fas fa-tint"></i><h3>Umidità</h3><div class="value" id="humidity">--</div></div>
+    <div class="card"><i class="fas fa-battery-half"></i><h3>Batteria</h3><div class="value" id="battery">--</div></div>
+    <div class="card"><i class="fas fa-temperature-low"></i><h3>Temperatura</h3><div class="value" id="temp">--</div></div>
+    <div class="card"><i class="fas fa-wifi"></i><h3>WiFi RSSI</h3><div class="value" id="wifi">--</div></div>
+    <div class="card"><i class="fas fa-clock"></i><h3>Ultimo messaggio</h3><div class="value" id="last_seen">--</div></div>
+    <div class="card"><i class="fas fa-calendar-plus"></i><h3>Ultima accensione</h3><div class="value" id="last_on">--</div></div>
+    <div class="card"><i class="fas fa-microchip"></i><h3>Firmware</h3><div class="value" id="firmware">--</div></div>
+</div>
+
+<div id="humidity-chart-container">
+    <canvas id="humidityGauge"></canvas>
+</div>
+
+<div id="humidity-history-container">
+    <canvas id="humidityHistory"></canvas>
+</div>
+
+<div class="toggle-container">
+    <label>
+        <input type="checkbox" id="auto-toggle"> Modalità automatica
+    </label>
+</div>
+
+<script>
+    const humidityData = [];
+    const humidityLabels = [];
+    let humidityGauge, humidityHistory;
+
+    function showToast(msg) {
+        const toast = document.createElement('div');
+        toast.className = 'toast';
+        toast.textContent = msg;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 3000);
+    }
+
+    function aggiornaDashboard(data) {
+        for (const key in data) {
+            const el = document.getElementById(key);
+            if (el) el.textContent = data[key];
+        }
+        aggiornaOnlineStatus(data.last_seen);
+        aggiornaHumidityCharts(data.humidity);
+    }
+
+    function aggiornaOnlineStatus(lastSeen) {
+        const badge = document.getElementById('esp-status');
+        const last = new Date(lastSeen);
+        const now = new Date();
+        const diff = (now - last) / 1000;
+        if (diff < 60) {
+            badge.textContent = 'Online';
+            badge.className = 'badge online';
+        } else {
+            badge.textContent = 'Offline';
+            badge.className = 'badge offline';
+        }
+    }
+
+    function aggiornaHumidityCharts(value) {
+        const v = parseFloat(value);
+        if (!isNaN(v)) {
+            humidityGauge.data.datasets[0].data[0] = v;
+            humidityGauge.update();
+
+            const now = new Date().toLocaleTimeString();
+            if (humidityData.length > 30) {
+                humidityData.shift();
+                humidityLabels.shift();
+            }
+            humidityData.push(v);
+            humidityLabels.push(now);
+            humidityHistory.update();
+        }
+    }
+
+    function fetchStatus() {
+        fetch('/status')
+            .then(res => res.json())
+            .then(data => aggiornaDashboard(data))
+            .catch(err => console.error('Errore caricamento stato', err));
+    }
+
+    function controllaPompa(action) {
+        fetch('/pump', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action })
+        })
+            .then(res => res.json())
+            .then(() => {
+                fetchStatus();
+                showToast(`Pompa ${action === 'on' ? 'accesa' : 'spenta'}`);
+            })
+            .catch(() => showToast('Errore invio comando'));
+    }
+
+    function initCharts() {
+        humidityGauge = new Chart(
+            document.getElementById('humidityGauge'), {
+                type: 'doughnut',
+                data: {
+                    labels: ['Umidità'],
+                    datasets: [{ data: [0, 100], backgroundColor: ['#28a745', '#e0e0e0'] }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { display: false } },
+                    cutout: '70%'
+                }
+            });
+
+        humidityHistory = new Chart(
+            document.getElementById('humidityHistory'), {
+                type: 'line',
+                data: {
+                    labels: humidityLabels,
+                    datasets: [{ label: 'Umidità (%)', data: humidityData, borderColor: '#28a745', tension: 0.3 }]
+                },
+                options: {
+                    responsive: true,
+                    scales: { y: { beginAtZero: true, max: 100 } }
+                }
+            });
+    }
+
+    document.getElementById('auto-toggle').checked = localStorage.getItem('autoMode') === 'true';
+    document.getElementById('auto-toggle').addEventListener('change', (e) => {
+        localStorage.setItem('autoMode', e.target.checked);
+        showToast(`Modalità ${e.target.checked ? 'automatica' : 'manuale'}`);
+    });
+
+    initCharts();
+    fetchStatus();
+    setInterval(fetchStatus, 5000);
+</script>
+</body>
+</html>
