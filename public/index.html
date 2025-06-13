@@ -1,13 +1,13 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-    <meta charset="UTF-8">
+    <meta charset="UTF-8" />
     <title>Bonsai MQTT Dashboard</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#28a745" />
-    <link rel="manifest" href="/manifest.json">
+    <link rel="manifest" href="/manifest.json" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
-    <link rel="stylesheet" href="/style.css">
+    <link rel="stylesheet" href="/style.css" />
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
@@ -39,122 +39,26 @@
 
 <div class="toggle-container">
     <label>
-        <input type="checkbox" id="auto-toggle"> Modalità automatica
+        <input type="checkbox" id="auto-toggle" /> Modalità automatica
     </label>
 </div>
 
+<!-- Modal autenticazione -->
+<div id="auth-modal" class="modal hidden">
+    <div class="modal-content">
+        <h2>🔒 Autenticazione richiesta</h2>
+        <input type="password" id="auth-pin-input" placeholder="Inserisci PIN">
+        <button id="auth-submit-btn">Conferma</button>
+    </div>
+</div>
+
+<script src="/main.js"></script>
 <script>
-    const humidityData = [];
-    const humidityLabels = [];
-    let humidityGauge, humidityHistory;
-
-    function showToast(msg) {
-        const toast = document.createElement('div');
-        toast.className = 'toast';
-        toast.textContent = msg;
-        document.body.appendChild(toast);
-        setTimeout(() => toast.remove(), 3000);
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/service-worker.js')
+            .then(() => console.log('[PWA] Service Worker registrato'))
+            .catch(err => console.warn('[PWA] Service Worker fallito', err));
     }
-
-    function aggiornaDashboard(data) {
-        for (const key in data) {
-            const el = document.getElementById(key);
-            if (el) el.textContent = data[key];
-        }
-        aggiornaOnlineStatus(data.last_seen);
-        aggiornaHumidityCharts(data.humidity);
-    }
-
-    function aggiornaOnlineStatus(lastSeen) {
-        const badge = document.getElementById('esp-status');
-        const last = new Date(lastSeen);
-        const now = new Date();
-        const diff = (now - last) / 1000;
-        if (diff < 60) {
-            badge.textContent = 'Online';
-            badge.className = 'badge online';
-        } else {
-            badge.textContent = 'Offline';
-            badge.className = 'badge offline';
-        }
-    }
-
-    function aggiornaHumidityCharts(value) {
-        const v = parseFloat(value);
-        if (!isNaN(v)) {
-            humidityGauge.data.datasets[0].data[0] = v;
-            humidityGauge.update();
-
-            const now = new Date().toLocaleTimeString();
-            if (humidityData.length > 30) {
-                humidityData.shift();
-                humidityLabels.shift();
-            }
-            humidityData.push(v);
-            humidityLabels.push(now);
-            humidityHistory.update();
-        }
-    }
-
-    function fetchStatus() {
-        fetch('/status')
-            .then(res => res.json())
-            .then(data => aggiornaDashboard(data))
-            .catch(err => console.error('Errore caricamento stato', err));
-    }
-
-    function controllaPompa(action) {
-        fetch('/pump', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action })
-        })
-            .then(res => res.json())
-            .then(() => {
-                fetchStatus();
-                showToast(`Pompa ${action === 'on' ? 'accesa' : 'spenta'}`);
-            })
-            .catch(() => showToast('Errore invio comando'));
-    }
-
-    function initCharts() {
-        humidityGauge = new Chart(
-            document.getElementById('humidityGauge'), {
-                type: 'doughnut',
-                data: {
-                    labels: ['Umidità'],
-                    datasets: [{ data: [0, 100], backgroundColor: ['#28a745', '#e0e0e0'] }]
-                },
-                options: {
-                    responsive: true,
-                    plugins: { legend: { display: false } },
-                    cutout: '70%'
-                }
-            });
-
-        humidityHistory = new Chart(
-            document.getElementById('humidityHistory'), {
-                type: 'line',
-                data: {
-                    labels: humidityLabels,
-                    datasets: [{ label: 'Umidità (%)', data: humidityData, borderColor: '#28a745', tension: 0.3 }]
-                },
-                options: {
-                    responsive: true,
-                    scales: { y: { beginAtZero: true, max: 100 } }
-                }
-            });
-    }
-
-    document.getElementById('auto-toggle').checked = localStorage.getItem('autoMode') === 'true';
-    document.getElementById('auto-toggle').addEventListener('change', (e) => {
-        localStorage.setItem('autoMode', e.target.checked);
-        showToast(`Modalità ${e.target.checked ? 'automatica' : 'manuale'}`);
-    });
-
-    initCharts();
-    fetchStatus();
-    setInterval(fetchStatus, 5000);
 </script>
 </body>
 </html>
