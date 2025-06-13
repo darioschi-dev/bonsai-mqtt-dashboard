@@ -1,7 +1,6 @@
 // server.js
 import express from 'express';
 import mqtt from 'mqtt';
-import path from 'path';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -59,11 +58,16 @@ app.post('/pump', (req, res) => {
     if (!['on', 'off'].includes(action)) {
         return res.status(400).json({ error: 'Azione non valida' });
     }
-    client.publish('bonsai/command/pump', action);
+
+    // ✅ Usa retain: true per mantenere il comando nel broker
+    client.publish('bonsai/command/pump', action, { retain: true });
+
+    // Salvataggio stato locale
     if (action === 'on') {
         latestData.last_on = new Date().toISOString();
     }
     latestData.pump = action;
+
     return res.json({ status: action });
 });
 
