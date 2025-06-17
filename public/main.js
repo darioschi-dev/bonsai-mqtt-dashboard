@@ -48,20 +48,12 @@ function requireAuth(callback) {
 
 function toast(message, duration = 3000) {
     const el = document.createElement("div");
+    el.className = "toast";
     el.textContent = message;
-    el.style.position = "fixed";
-    el.style.bottom = "1rem";
-    el.style.left = "50%";
-    el.style.transform = "translateX(-50%)";
-    el.style.background = "#333";
-    el.style.color = "#fff";
-    el.style.padding = "0.75rem 1.5rem";
-    el.style.borderRadius = "8px";
-    el.style.zIndex = 9999;
-    el.style.boxShadow = "0 4px 12px rgba(0,0,0,0.2)";
     document.body.appendChild(el);
     setTimeout(() => el.remove(), duration);
 }
+
 
 function controllaPompa(action) {
     requireAuth(() => {
@@ -79,27 +71,134 @@ function controllaPompa(action) {
     });
 }
 
+function millisToAgo(ms) {
+    const uptime = parseInt(ms);
+    const now = Date.now();
+    const bootTime = now - uptime;
+    const secondsAgo = Math.floor((now - bootTime) / 1000);
+
+    if (secondsAgo < 60) return `${secondsAgo}s fa`;
+    const minutes = Math.floor(secondsAgo / 60);
+    if (minutes < 60) return `${minutes}min fa`;
+    const hours = Math.floor(minutes / 60);
+    return `${hours}h fa`;
+}
+
 function aggiornaDashboard(data) {
     for (const key in data) {
         const el = document.getElementById(key);
-        if (el) el.textContent = data[key];
+
+        // ⏱ Format speciali per alcuni campi
+        if (key === "last_seen" && el) {
+            el.textContent = millisToAgo(data.last_seen);
+        } else if (key === "last_on" && el) {
+            const date = new Date(data.last_on);
+            el.textContent = date.toLocaleString("it-IT", {
+                hour: "2-digit",
+                minute: "2-digit",
+                second: "2-digit",
+                day: "2-digit",
+                month: "2-digit",
+                year: "numeric",
+            });
+        } else if (el) {
+            el.textContent = data[key];
+        }
     }
+
     aggiornaOnlineStatus(data.last_seen);
     aggiornaHumidityCharts(data.humidity);
 }
 
-function aggiornaOnlineStatus(lastSeen) {
+function aggiornaOnlineStatus(lastSeenMillis) {
     const badge = document.getElementById("esp-status");
-    const last = new Date(lastSeen);
-    const now = new Date();
-    const diff = (now - last) / 1000;
-    if (diff < 60) {
+
+    const diffSeconds = (Date.now() - (Date.now() - lastSeenMillis)) / 1000;
+
+    if (diffSeconds < 60) {
         badge.textContent = "Online";
         badge.className = "badge online";
     } else {
         badge.textContent = "Offline";
         badge.className = "badge offline";
     }
+
+    // facoltativo: mostra tempo fa
+    const lastSeenEl = document.getElementById("last-seen-time");
+    if (lastSeenEl) {
+        lastSeenEl.textContent = millisToAgo(lastSeenMillis);
+    }
+}
+
+function salvaConfigurazione() {
+    requireAuth(() => {
+        const cfg = {
+            wifi_ssid: document.getElementById("cfg-wifi_ssid").value,
+            wifi_password: document.getElementById("cfg-wifi_password").value,
+            mqtt_broker: document.getElementById("cfg-mqtt_broker").value,
+            mqtt_port: parseInt(document.getElementById("cfg-mqtt_port").value),
+            mqtt_username: document.getElementById("cfg-mqtt_username").value,
+            mqtt_password: document.getElementById("cfg-mqtt_password").value,
+            sensor_pin: parseInt(document.getElementById("cfg-sensor_pin").value),
+            pump_pin: parseInt(document.getElementById("cfg-pump_pin").value),
+            relay_pin: parseInt(document.getElementById("cfg-relay_pin").value),
+            battery_pin: parseInt(document.getElementById("cfg-battery_pin").value),
+            moisture_threshold: parseInt(document.getElementById("cfg-moisture_threshold").value),
+            pump_duration: parseInt(document.getElementById("cfg-pump_duration").value),
+            measurement_interval: parseInt(document.getElementById("cfg-measurement_interval").value),
+            debug: document.getElementById("cfg-debug").checked,
+            use_pump: document.getElementById("cfg-use_pump").checked,
+            sleep_hours: parseInt(document.getElementById("cfg-sleep_hours").value),
+            use_dhcp: document.getElementById("cfg-use_dhcp").checked,
+            ip_address: document.getElementById("cfg-ip_address").value,
+            gateway: document.getElementById("cfg-gateway").value,
+            subnet: document.getElementById("cfg-subnet").value
+        };
+
+        fetch("/api/config", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(cfg),
+        })
+            .then((res) => res.json())
+            .then(() => toast("✅ Config salvata, il dispositivo si riavvierà"))
+            .catch(() => toast("❌ Errore salvataggio config"));
+    });
+}
+
+function caricaConfigurazione() {
+    fetch("/api/config")
+        .then((res) => res.json())
+        .then((cfg) => {
+            document.getElementById("cfg-wifi_ssid").value = cfg.wifi_ssid || "";
+            document.getElementById("cfg-wifi_password").value = cfg.wifi_password || "";
+            document.getElementById("cfg-mqtt_broker").value = cfg.mqtt_broker || "";
+            document.getElementById("cfg-mqtt_port").value = cfg.mqtt_port || 8883;
+            document.getElementById("cfg-mqtt_username").value = cfg.mqtt_username || "";
+            document.getElementById("cfg-mqtt_password").value = cfg.mqtt_password || "";
+            document.getElementById("cfg-sensor_pin").value = cfg.sensor_pin || 32;
+            document.getElementById("cfg-pump_pin").value = cfg.pump_pin || 26;
+            document.getElementById("cfg-relay_pin").value = cfg.relay_pin || 27;
+            document.getElementById("cfg-battery_pin").value = cfg.battery_pin || 34;
+            document.getElementById("cfg-moisture_threshold").value = cfg.moisture_threshold || 25;
+            document.getElementById("cfg-pump_duration").value = cfg.pump_duration || 5;
+            document.getElementById("cfg-measurement_interval").value = cfg.measurement_interval || 1800000;
+            document.getElementById("cfg-debug").checked = cfg.debug || false;
+            document.getElementById("cfg-use_pump").checked = cfg.use_pump || false;
+            document.getElementById("cfg-sleep_hours").value = cfg.sleep_hours || 0;
+            document.getElementById("cfg-use_dhcp").checked = cfg.use_dhcp || true;
+            document.getElementById("cfg-ip_address").value = cfg.ip_address || "";
+            document.getElementById("cfg-gateway").value = cfg.gateway || "";
+            document.getElementById("cfg-subnet").value = cfg.subnet || "";
+        });
+}
+
+function confermaSalvataggio() {
+    document.getElementById("confirm-modal").classList.remove("hidden");
+}
+
+function chiudiModal() {
+    document.getElementById("confirm-modal").classList.add("hidden");
 }
 
 const humidityData = [];
@@ -185,6 +284,7 @@ document.getElementById("auto-toggle").addEventListener("change", (e) => {
     }, 100);
 });
 
+caricaConfigurazione();
 initCharts();
 fetchStatus();
 setInterval(fetchStatus, 5000);
