@@ -47,31 +47,45 @@
 <div class="config-form card">
     <h3><i class="fas fa-cogs"></i> Configurazione Dispositivo</h3>
 
-    <label>SSID Wi-Fi:<input type="text" id="cfg-wifi_ssid" placeholder="Nome rete Wi-Fi" /></label>
-    <label>Password Wi-Fi:<input type="password" id="cfg-wifi_password" placeholder="Password" /></label>
+    <fieldset>
+        <legend><i class="fas fa-wifi"></i> Wi-Fi</legend>
+        <label>SSID Wi-Fi:<input type="text" id="cfg-wifi_ssid" placeholder="Nome rete Wi-Fi" /></label>
+        <label>Password Wi-Fi:<input type="password" id="cfg-wifi_password" placeholder="Password" /></label>
+    </fieldset>
 
-    <label>Broker MQTT:<input type="text" id="cfg-mqtt_broker" /></label>
-    <label>Porta MQTT:<input type="number" id="cfg-mqtt_port" min="1" max="65535" /></label>
-    <label>Utente MQTT:<input type="text" id="cfg-mqtt_username" /></label>
-    <label>Password MQTT:<input type="password" id="cfg-mqtt_password" /></label>
+    <fieldset>
+        <legend><i class="fas fa-network-wired"></i> MQTT</legend>
+        <label>Broker MQTT:<input type="text" id="cfg-mqtt_broker" /></label>
+        <label>Porta MQTT:<input type="number" id="cfg-mqtt_port" min="1" max="65535" /></label>
+        <label>Utente MQTT:<input type="text" id="cfg-mqtt_username" /></label>
+        <label>Password MQTT:<input type="password" id="cfg-mqtt_password" /></label>
+    </fieldset>
 
-    <label>Pin sensore umidità:<input type="number" id="cfg-sensor_pin" min="0" max="39" /></label>
-    <label>Pin pompa:<input type="number" id="cfg-pump_pin" min="0" max="39" /></label>
-    <label>Pin relè:<input type="number" id="cfg-relay_pin" min="0" max="39" /></label>
-    <label>Pin batteria (ADC):<input type="number" id="cfg-battery_pin" min="0" max="39" /></label>
+    <fieldset>
+        <legend><i class="fas fa-microchip"></i> Pin</legend>
+        <label>Pin sensore umidità:<input type="number" id="cfg-sensor_pin" min="0" max="39" /></label>
+        <label>Pin pompa:<input type="number" id="cfg-pump_pin" min="0" max="39" /></label>
+        <label>Pin relè:<input type="number" id="cfg-relay_pin" min="0" max="39" /></label>
+        <label>Pin batteria (ADC):<input type="number" id="cfg-battery_pin" min="0" max="39" /></label>
+    </fieldset>
 
-    <label>Soglia irrigazione (%):<input type="number" id="cfg-moisture_threshold" min="0" max="100" /></label>
-    <label>Durata pompa (s):<input type="number" id="cfg-pump_duration" min="1" max="300" /></label>
-    <label>Intervallo lettura (ms):<input type="number" id="cfg-measurement_interval" step="1000" /></label>
+    <fieldset>
+        <legend><i class="fas fa-sliders-h"></i> Parametri</legend>
+        <label>Soglia irrigazione (%):<input type="number" id="cfg-moisture_threshold" min="0" max="100" /></label>
+        <label>Durata pompa (s):<input type="number" id="cfg-pump_duration" min="1" max="300" /></label>
+        <label>Intervallo lettura (ms):<input type="number" id="cfg-measurement_interval" step="1000" /></label>
+        <label><input type="checkbox" id="cfg-use_pump" /> Irrigazione automatica</label>
+        <label><input type="checkbox" id="cfg-debug" /> Debug seriale</label>
+        <label>Ore di Sleep:<input type="number" id="cfg-sleep_hours" min="0" max="24" /></label>
+    </fieldset>
 
-    <label><input type="checkbox" id="cfg-use_pump" /> Irrigazione automatica</label>
-    <label><input type="checkbox" id="cfg-debug" /> Debug seriale</label>
-    <label>Ore di Sleep:<input type="number" id="cfg-sleep_hours" min="0" max="24" /></label>
-
-    <label><input type="checkbox" id="cfg-use_dhcp" /> Usa DHCP</label>
-    <label>IP statico:<input type="text" id="cfg-ip_address" placeholder="192.168.x.x" /></label>
-    <label>Gateway:<input type="text" id="cfg-gateway" placeholder="192.168.x.1" /></label>
-    <label>Subnet:<input type="text" id="cfg-subnet" placeholder="255.255.255.0" /></label>
+    <fieldset>
+        <legend><i class="fas fa-ethernet"></i> Rete</legend>
+        <label><input type="checkbox" id="cfg-use_dhcp" /> Usa DHCP</label>
+        <label>IP statico:<input type="text" id="cfg-ip_address" placeholder="192.168.x.x" /></label>
+        <label>Gateway:<input type="text" id="cfg-gateway" placeholder="192.168.x.1" /></label>
+        <label>Subnet:<input type="text" id="cfg-subnet" placeholder="255.255.255.0" /></label>
+    </fieldset>
 
     <button onclick="confermaSalvataggio()">💾 Salva Configurazione</button>
 </div>
