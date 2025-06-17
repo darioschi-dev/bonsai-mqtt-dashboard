@@ -131,38 +131,48 @@ function aggiornaOnlineStatus(lastSeenMillis) {
 }
 
 function salvaConfigurazione() {
-    requireAuth(() => {
-        const cfg = {
-            wifi_ssid: document.getElementById("cfg-wifi_ssid").value,
-            wifi_password: document.getElementById("cfg-wifi_password").value,
-            mqtt_broker: document.getElementById("cfg-mqtt_broker").value,
-            mqtt_port: parseInt(document.getElementById("cfg-mqtt_port").value),
-            mqtt_username: document.getElementById("cfg-mqtt_username").value,
-            mqtt_password: document.getElementById("cfg-mqtt_password").value,
-            sensor_pin: parseInt(document.getElementById("cfg-sensor_pin").value),
-            pump_pin: parseInt(document.getElementById("cfg-pump_pin").value),
-            relay_pin: parseInt(document.getElementById("cfg-relay_pin").value),
-            battery_pin: parseInt(document.getElementById("cfg-battery_pin").value),
-            moisture_threshold: parseInt(document.getElementById("cfg-moisture_threshold").value),
-            pump_duration: parseInt(document.getElementById("cfg-pump_duration").value),
-            measurement_interval: parseInt(document.getElementById("cfg-measurement_interval").value),
-            debug: document.getElementById("cfg-debug").checked,
-            use_pump: document.getElementById("cfg-use_pump").checked,
-            sleep_hours: parseInt(document.getElementById("cfg-sleep_hours").value),
-            use_dhcp: document.getElementById("cfg-use_dhcp").checked,
-            ip_address: document.getElementById("cfg-ip_address").value,
-            gateway: document.getElementById("cfg-gateway").value,
-            subnet: document.getElementById("cfg-subnet").value
-        };
+    requireAuth(async () => {
+        try {
+            // 1. Carica configurazione attuale
+            const res = await fetch("/api/config");
+            const currentConfig = await res.json();
 
-        fetch("/api/config", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(cfg),
-        })
-            .then((res) => res.json())
-            .then(() => toast("✅ Config salvata, il dispositivo si riavvierà"))
-            .catch(() => toast("❌ Errore salvataggio config"));
+            // 2. Crea nuova config con i dati del form
+            const newConfig = {
+                wifi_ssid: document.getElementById("cfg-wifi_ssid").value || currentConfig.wifi_ssid,
+                wifi_password: document.getElementById("cfg-wifi_password").value || currentConfig.wifi_password,
+                mqtt_broker: document.getElementById("cfg-mqtt_broker").value || currentConfig.mqtt_broker,
+                mqtt_port: parseInt(document.getElementById("cfg-mqtt_port").value) || currentConfig.mqtt_port,
+                mqtt_username: document.getElementById("cfg-mqtt_username").value || currentConfig.mqtt_username,
+                mqtt_password: document.getElementById("cfg-mqtt_password").value || currentConfig.mqtt_password,
+                sensor_pin: parseInt(document.getElementById("cfg-sensor_pin").value) || currentConfig.sensor_pin,
+                pump_pin: parseInt(document.getElementById("cfg-pump_pin").value) || currentConfig.pump_pin,
+                relay_pin: parseInt(document.getElementById("cfg-relay_pin").value) || currentConfig.relay_pin,
+                battery_pin: parseInt(document.getElementById("cfg-battery_pin").value) || currentConfig.battery_pin,
+                moisture_threshold: parseInt(document.getElementById("cfg-moisture_threshold").value) || currentConfig.moisture_threshold,
+                pump_duration: parseInt(document.getElementById("cfg-pump_duration").value) || currentConfig.pump_duration,
+                measurement_interval: parseInt(document.getElementById("cfg-measurement_interval").value) || currentConfig.measurement_interval,
+                debug: document.getElementById("cfg-debug").checked,
+                use_pump: document.getElementById("cfg-use_pump").checked,
+                sleep_hours: parseInt(document.getElementById("cfg-sleep_hours").value) || currentConfig.sleep_hours,
+                use_dhcp: document.getElementById("cfg-use_dhcp").checked,
+                ip_address: document.getElementById("cfg-ip_address").value || currentConfig.ip_address,
+                gateway: document.getElementById("cfg-gateway").value || currentConfig.gateway,
+                subnet: document.getElementById("cfg-subnet").value || currentConfig.subnet
+            };
+
+            // 3. Invia la config unita
+            await fetch("/api/config", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(newConfig),
+            });
+
+            toast("✅ Config salvata, il dispositivo si riavvierà");
+        } catch (err) {
+            console.error(err);
+            toast("❌ Errore salvataggio config");
+        }
     });
 }
 
