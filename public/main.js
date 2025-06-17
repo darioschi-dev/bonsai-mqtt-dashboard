@@ -92,17 +92,22 @@ function aggiornaDashboard(data) {
         if (key === "last_seen" && el) {
             el.textContent = millisToAgo(data.last_seen);
         } else if (key === "last_on" && el) {
-            const date = new Date(data.last_on);
-            el.textContent = date.toLocaleString("it-IT", {
-                hour: "2-digit",
-                minute: "2-digit",
-                second: "2-digit",
-                day: "2-digit",
-                month: "2-digit",
-                year: "numeric",
-            });
+            const ts = Number(data.last_on);
+            if (ts > 0) {
+                const date = new Date(ts);
+                el.textContent = date.toLocaleString("it-IT", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                    day: "2-digit",
+                    month: "2-digit",
+                    year: "numeric",
+                });
+            } else {
+                el.textContent = "-";
+            }
         } else if (el) {
-            el.textContent = data[key];
+            el.textContent = data[key] || "-";
         }
     }
 
