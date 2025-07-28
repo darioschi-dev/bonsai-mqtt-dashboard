@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8" />
+    <title>Storico MQTT – Bonsai</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="/style.css" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+<h1>🗂 Storico MQTT Log</h1>
+
+<canvas id="chart" height="100"></canvas>
+
+<hr />
+
+<table id="log-table">
+    <thead>
+    <tr>
+        <th>Timestamp</th>
+        <th>Topic</th>
+        <th>Messaggio</th>
+    </tr>
+    </thead>
+    <tbody></tbody>
+</table>
+
+<script>
+    fetch('/api/logs')
+        .then(res => res.json())
+        .then(logs => {
+            const table = document.querySelector("#log-table tbody");
+            const chartLabels = [];
+            const chartData = [];
+
+            logs.reverse().forEach(log => {
+                const tr = document.createElement("tr");
+                tr.innerHTML = `
+            <td>${new Date(log.timestamp).toLocaleString("it-IT")}</td>
+            <td>${log.topic}</td>
+            <td>${log.message}</td>
+          `;
+                table.appendChild(tr);
+
+                // Se è umidità, prepara anche grafico
+                if (log.topic === "bonsai/status/humidity") {
+                    chartLabels.push(new Date(log.timestamp).toLocaleTimeString("it-IT"));
+                    chartData.push(parseFloat(log.message));
+                }
+            });
+
+            new Chart(document.getElementById("chart"), {
+                type: "line",
+                data: {
+                    labels: chartLabels,
+                    datasets: [{
+                        label: "Umidità (%)",
+                        data: chartData,
+                        borderColor: "#28a745",
+                        tension: 0.3,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100
+                        }
+                    }
+                }
+            });
+        });
+</script>
+</body>
+</html>

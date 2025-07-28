@@ -208,6 +208,31 @@ function caricaConfigurazione() {
         });
 }
 
+document.getElementById("firmware-form").addEventListener("submit", function (e) {
+    e.preventDefault();
+
+    requireAuth(() => {
+        const form = e.target;
+        const data = new FormData(form);
+
+        fetch("/upload-firmware", {
+            method: "POST",
+            body: data,
+        })
+            .then((res) => res.json())
+            .then((res) => {
+                if (res.success) {
+                    toast("✅ Firmware caricato con successo!");
+                    toast("♻️ Riavvio ESP in corso...");
+                } else {
+                    toast("❌ Errore upload");
+                }
+            })
+            .catch(() => toast("❌ Upload fallito"));
+
+    });
+});
+
 function confermaSalvataggio() {
     document.getElementById("confirm-modal").classList.remove("hidden");
 }
@@ -303,6 +328,37 @@ caricaConfigurazione();
 initCharts();
 fetchStatus();
 setInterval(fetchStatus, 5000);
+
+fetch("/config/frontend")
+    .then((res) => res.json())
+    .then((cfg) => {
+        const mqttClient = mqtt.connect(cfg.mqtt_ws_host, {
+            username: cfg.mqtt_username,
+            password: cfg.mqtt_password,
+        });
+
+        mqttClient.on("connect", () => {
+            console.log("📡 WebSocket MQTT connesso");
+            mqttClient.subscribe("bonsai/status/#");
+        });
+
+        mqttClient.on("message", (topic, payload) => {
+            const message = payload.toString();
+
+            if (topic === "bonsai/status/humidity") {
+                aggiornaHumidityCharts(message);
+            }
+
+            if (topic === "bonsai/status/last_seen") {
+                aggiornaOnlineStatus(Number(message));
+            }
+
+            if (topic === "bonsai/status/pump") {
+                document.getElementById("pump").textContent = message;
+            }
+        });
+    })
+    .catch((err) => console.error("❌ Errore caricamento config MQTT frontend", err));
 
 // main.js (alla fine)
 if ('serviceWorker' in navigator) {
