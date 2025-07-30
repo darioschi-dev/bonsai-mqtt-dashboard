@@ -1,5 +1,5 @@
 import mqtt, { MqttClient } from 'mqtt';
-import { saveMqttLog } from './dataLogger';
+import { saveMqttLog } from './dataLogger.js';
 
 let client: MqttClient;
 
@@ -14,7 +14,7 @@ export function setupMqttClient() {
 
     client.on('connect', () => {
         console.log('📡 MQTT connesso');
-        client.subscribe('bonsai/status/#', (err) => {
+        client.subscribe('bonsai/status/#', (err: Error | null) => {
             if (err) {
                 console.error('❌ Errore sottoscrizione topic:', err.message);
             }
@@ -29,19 +29,16 @@ export function setupMqttClient() {
         await saveMqttLog(topic, message);
     });
 
-    client.on('error', (err) => {
-        console.error('❌ Errore MQTT:', err.message);
+    client.on('error', (err: Error) => {
+        console.error('❌ Errore client MQTT:', err.message);
     });
 }
 
 export function publishMqttCommand(topic: string, payload: string) {
     if (client && client.connected) {
-        client.publish(topic, payload, { retain: false }, (err) => {
-            if (err) {
-                console.error('❌ Errore pubblicazione comando MQTT:', err.message);
-            } else {
-                console.log(`📢 Comando pubblicato su ${topic}: ${payload}`);
-            }
+        client.publish(topic, payload, { retain: false }, (err?: Error) => {
+            if (err) console.error('Errore invio comando MQTT:', err.message);
+            else console.log(`📤 Comando pubblicato su ${topic}: ${payload}`);
         });
     } else {
         console.warn('⚠️ MQTT non connesso. Impossibile pubblicare comando.');
