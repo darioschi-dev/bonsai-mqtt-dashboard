@@ -30,7 +30,8 @@ RUN npm ci --omit=dev
 # Copia i file compilati e le altre risorse necessarie
 COPY --from=builder /app/dist ./dist
 COPY public ./public
-COPY uploads ./uploads
+RUN mkdir -p uploads
+COPY uploads/ ./uploads/
 
 # Espone la porta dell'app
 EXPOSE 3000

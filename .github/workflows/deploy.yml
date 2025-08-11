@@ -46,7 +46,7 @@ jobs:
           # host_verification: false                      # opzionale
           script: |
             set -e
-            if [ ! -d "/opt/bonsai-stack/app/.git" ]; then
+            if [ ! -d "/opt/bonsai-stack/.git" ]; then
               echo "➡️  Primo setup: installer.sh"
               sudo mkdir -p /opt/bonsai-stack
               sudo mv -f /tmp/installer.sh /opt/bonsai-stack/installer.sh
