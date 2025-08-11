@@ -14,6 +14,7 @@ echo "==> Rebuild dashboard (multi-stage) & restart"
 cd "$STACK_DIR"
 
 mkdir -p "$STACK_DIR/uploads"
+mkdir -p "$STACK_DIR/app/uploads"
 
 # Aggiorna eventuali immagini di base (solo se vuoi aggiornare anche mongo/mqtt)
 docker compose pull --ignore-buildable

@@ -126,6 +126,7 @@ else
 fi
 
 mkdir -p "$APP_DIR/uploads"
+mkdir -p "$STACK_DIR/app/uploads"
 
 # firmware opzionale
 if [ -n "$FIRMWARE_FILE" ] && [ -f "$FIRMWARE_FILE" ]; then
