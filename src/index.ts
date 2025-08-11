@@ -50,13 +50,14 @@ async function sha256File(filePath: string) {
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // Espone i bin OTA sotto /firmware (NON /uploads) per coerenza con il gate UPDATE_HOST
+// Directory firmware e temporanea, entrambe nello stesso volume
 const firmwareDir = path.resolve(__dirname, '..', 'uploads', 'firmware');
-const tmpDir = path.resolve(__dirname, '..', 'uploads', 'tmp'); // <— tmp nello stesso volume
+const tmpDir = path.resolve(__dirname, '..', 'uploads', 'tmp');
 
 await fsp.mkdir(firmwareDir, { recursive: true }).catch(() => {});
 await fsp.mkdir(tmpDir, { recursive: true }).catch(() => {});
 
-// Multer userà tmpDir dentro il bind mount, evitando EXDEV
+// Multer salva direttamente nel volume condiviso
 const upload = multer({ dest: tmpDir });
 
 const binPath = path.join(firmwareDir, 'esp32.bin');
