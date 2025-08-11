@@ -12,8 +12,9 @@ git reset --hard "origin/$BRANCH"
 
 echo "==> Rebuild & restart (pull base images)"
 cd "$STACK_DIR"
-docker compose pull --ignore-buildable   # aggiorna mongo/mosquitto
-docker compose up -d --build             # rebuild dashboard con gli ultimi sorgenti
+docker compose pull --ignore-buildable || true
+docker compose build --no-cache
+docker compose up -d --force-recreate
 
 echo "==> Versione sorgenti:"
 git -C "$APP_DIR" --no-pager log -1 --oneline
