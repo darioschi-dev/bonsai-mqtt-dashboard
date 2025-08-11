@@ -13,6 +13,8 @@ git reset --hard "origin/$BRANCH"
 echo "==> Rebuild dashboard (multi-stage) & restart"
 cd "$STACK_DIR"
 
+mkdir -p "$STACK_DIR/uploads"
+
 # Aggiorna eventuali immagini di base (solo se vuoi aggiornare anche mongo/mqtt)
 docker compose pull --ignore-buildable
 
