@@ -1,21 +1,22 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-set -e
+STACK_DIR="/opt/bonsai-stack"
+APP_DIR="$STACK_DIR/app"
 
-RASPBERRY_HOST="pi@192.168.1.42"
-PROJECT_DIR="/home/pi/bonsai-mqtt-dashboard"
+echo "==> Pull Git"
+cd "$APP_DIR"
+BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo master)"
+git fetch --all --prune
+git reset --hard "origin/$BRANCH"
 
-echo "🔧 Build del progetto TypeScript..."
-npm run build
+echo "==> Rebuild & restart (pull base images)"
+cd "$STACK_DIR"
+docker compose pull --ignore-buildable   # aggiorna mongo/mosquitto
+docker compose up -d --build             # rebuild dashboard con gli ultimi sorgenti
 
-echo "📦 Copia dei file al Raspberry Pi..."
-rsync -avz --delete   --exclude node_modules   --exclude .git   ./ "$RASPBERRY_HOST:$PROJECT_DIR"
+echo "==> Versione sorgenti:"
+git -C "$APP_DIR" --no-pager log -1 --oneline
 
-echo "🚀 Riavvio del servizio sul Raspberry..."
-ssh $RASPBERRY_HOST <<EOF
-cd $PROJECT_DIR
-docker compose down
-docker compose up -d
-EOF
-
-echo "✅ Deploy completato con successo!"
+echo "==> Stato container:"
+docker compose ps

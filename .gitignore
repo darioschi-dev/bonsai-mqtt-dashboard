@@ -140,3 +140,14 @@ mosquitto/data/
 mosquitto/log/
 uploads/
 tmp/
+
+
+# env e segreti
+.env
+app/.env
+mosquitto/config/passwd
+
+# dati runtime
+data/
+dist/
+log
