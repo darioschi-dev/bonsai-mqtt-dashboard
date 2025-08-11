@@ -51,11 +51,11 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // Espone i bin OTA sotto /firmware (NON /uploads) per coerenza con il gate UPDATE_HOST
 // Directory firmware e temporanea, entrambe nello stesso volume
-const firmwareDir = path.resolve(__dirname, '..', 'uploads', 'firmware');
-const tmpDir = path.resolve(__dirname, '..', 'uploads', 'tmp');
+const firmwareDir = path.join(process.cwd(), 'uploads', 'firmware');
+const tmpDir = path.join(process.cwd(), 'uploads', 'tmp');
 
-await fsp.mkdir(firmwareDir, { recursive: true }).catch(() => {});
-await fsp.mkdir(tmpDir, { recursive: true }).catch(() => {});
+await fsp.mkdir(firmwareDir, { recursive: true });
+await fsp.mkdir(tmpDir, { recursive: true });
 
 // Multer salva direttamente nel volume condiviso
 const upload = multer({ dest: tmpDir });
@@ -133,10 +133,15 @@ app.post('/upload-firmware', upload.single('firmware'), async (req, res) => {
             console.log('[OTA] Tentativo rename');
             await fsp.rename(req.file.path, binPath);
         } catch (e: any) {
-            console.warn('[OTA] rename fallita:', e?.message);
-            console.log('[OTA] Tentativo copy+unlink');
-            await fsp.copyFile(req.file.path, binPath);
-            await fsp.unlink(req.file.path).catch(() => {});
+            if (e.code === 'EXDEV') {
+                console.warn('[OTA] rename fallita:', e?.message);
+                console.log('[OTA] Tentativo copy+unlink');
+                await fsp.copyFile(req.file.path, binPath);
+                await fsp.unlink(req.file.path);
+            } else {
+                console.error('[OTA] rename fallita:', e?.message);
+                return res.status(500).json({ error: 'Errore interno rename' });
+            }
         }
 
         console.log('[OTA] Stat file destinazione');
