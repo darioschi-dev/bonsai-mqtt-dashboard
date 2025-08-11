@@ -1,0 +1,35 @@
+name: Deploy to Raspberry Pi
+
+on:
+  push:
+    branches: [ master ]   # o main
+  workflow_dispatch: {}    # avvio manuale opzionale
+
+concurrency:
+  group: deploy-bonsai
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PI_HOST }}          # es: 192.168.1.240 o dominio
+          username: ${{ secrets.PI_USER }}      # es: pi
+          key: ${{ secrets.PI_SSH_KEY }}        # private key in PEM
+          port: ${{ secrets.PI_SSH_PORT || 22 }}
+          script: |
+            set -e
+            cd /opt/bonsai-stack
+            echo "➡️  Pull ultimi commit"
+            git fetch --all
+            git reset --hard origin/master     # o origin/main
+            echo "🧹 Pulizia immagini dangling (opzionale)"
+            docker image prune -f || true
+            echo "🧱 Build no-cache & recreate"
+            docker compose build --no-cache --force-recreate
+            echo "🚀 Up in detach"
+            docker compose up -d
+            echo "✅ Done"

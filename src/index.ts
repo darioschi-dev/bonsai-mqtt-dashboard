@@ -9,7 +9,7 @@ import crypto from 'crypto';
 import {fileURLToPath} from 'url';
 
 import {setupMqttClient, publishRetained} from './mqttClient.js';
-import {getLatestLogs, getOtaAcks} from './dataLogger.js';
+import {ensureMongoIndexes, getLatestLogs, getOtaAcks} from './dataLogger.js';
 
 // __dirname compat ESM
 const __filename = fileURLToPath(import.meta.url);
@@ -211,6 +211,8 @@ app.get('/api/ota/acks', async (req, res) => {
 /* ---------- Avvio ---------- */
 
 setupMqttClient();
+
+ensureMongoIndexes().catch(err => console.warn('⚠️ ensureMongoIndexes:', err));
 
 // Error handler tipizzato
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {

@@ -6,10 +6,12 @@ dotenv.config();
 const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017';
 const dbName = process.env.MONGODB_DB || 'bonsai';
 const collectionName = process.env.MONGODB_COLLECTION || 'logs';
+const ackCollectionName = process.env.MONGODB_ACK_COLLECTION || 'ota_acks';
 
 let client: MongoClient;
 let isConnected = false;
 
+/* ---------- Connessione ---------- */
 export async function connectMongo() {
     if (!isConnected) {
         client = new MongoClient(uri);
@@ -19,11 +21,28 @@ export async function connectMongo() {
     }
 }
 
+async function getDb() {
+    if (!isConnected) await connectMongo();
+    return client.db(dbName);
+}
+
+/* ---------- Indici (performance) ---------- */
+export async function ensureMongoIndexes() {
+    const db = await getDb();
+
+    // logs
+    await db.collection(collectionName).createIndex({ timestamp: -1 });
+    await db.collection(collectionName).createIndex({ topic: 1, timestamp: -1 });
+
+    // ota_acks
+    await db.collection(ackCollectionName).createIndex({ received_at: -1 });
+    await db.collection(ackCollectionName).createIndex({ device: 1, received_at: -1 });
+}
+
+/* ---------- Log MQTT grezzi ---------- */
 export async function saveMqttLog(topic: string, message: string) {
     try {
-        if (!isConnected) await connectMongo();
-
-        const db = client.db(dbName);
+        const db = await getDb();
         const collection = db.collection(collectionName);
 
         await collection.insertOne({
@@ -41,23 +60,16 @@ export async function saveMqttLog(topic: string, message: string) {
 }
 
 export async function getLatestLogs(limit = 100) {
-    if (!isConnected) await connectMongo();
-    const db = client.db(dbName);
-    return db.collection(collectionName)
+    const db = await getDb();
+    return db
+        .collection(collectionName)
         .find({})
         .sort({ timestamp: -1 })
-        .limit(limit)
+        .limit(Math.max(1, Math.min(1000, limit)))
         .toArray();
 }
 
-// ===== OTA ACK logging =====
-const ackCollectionName = process.env.MONGODB_ACK_COLLECTION || 'ota_acks';
-
-async function getDb() {
-    if (!isConnected) await connectMongo();
-    return client.db(dbName);
-}
-
+/* ---------- OTA ACK ---------- */
 export interface OtaAck {
     device: string;
     version: string;
@@ -71,19 +83,19 @@ export interface OtaAck {
 export async function saveOtaAck(ack: OtaAck) {
     const db = await getDb();
     const col = db.collection(ackCollectionName);
-    const doc = {
+    await col.insertOne({
         ...ack,
         received_at: ack.received_at ?? new Date(),
-    };
-    await col.insertOne(doc);
+    });
 }
 
-export async function getOtaAcks(limit = 50) {
+export async function getOtaAcks(limit = 50, device?: string) {
     const db = await getDb();
     const col = db.collection(ackCollectionName);
+    const query = device ? { device } : {};
     return col
-        .find({})
+        .find(query)
         .sort({ received_at: -1 })
-        .limit(limit)
+        .limit(Math.max(1, Math.min(1000, limit)))
         .toArray();
 }
