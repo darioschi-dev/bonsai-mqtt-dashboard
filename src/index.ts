@@ -49,11 +49,11 @@ async function sha256File(filePath: string) {
 // Espone asset frontend
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
-// Espone i bin OTA sotto /firmware (NON /uploads) per coerenza con il gate UPDATE_HOST
-// Directory firmware e temporanea, entrambe nello stesso volume
-const firmwareDir = path.join(process.cwd(), 'uploads', 'firmware');
-const tmpDir = path.join(process.cwd(), 'uploads', 'tmp');
+// Directory firmware e temporanea nello stesso volume bind-mountato
+const firmwareDir = path.resolve(__dirname, '..', 'uploads', 'firmware');
+const tmpDir = path.resolve(__dirname, '..', 'uploads', 'tmp');
 
+// Creazione cartelle PRIMA di usare multer
 await fsp.mkdir(firmwareDir, { recursive: true });
 await fsp.mkdir(tmpDir, { recursive: true });
 
@@ -116,8 +116,6 @@ app.post('/upload-firmware', upload.single('firmware'), async (req, res) => {
             return res.status(400).json({ error: 'File mancante (campo "firmware")' });
         }
         console.log('[OTA] File ricevuto:', req.file);
-
-        // 🔹 Aggiungi qui per debug
         console.log('[OTA] req.file.path:', req.file.path);
         console.log('[OTA] binPath:', binPath);
 
