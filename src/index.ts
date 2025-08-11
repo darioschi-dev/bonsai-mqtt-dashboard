@@ -116,6 +116,10 @@ app.post('/upload-firmware', upload.single('firmware'), async (req, res) => {
         }
         console.log('[OTA] File ricevuto:', req.file);
 
+        // 🔹 Aggiungi qui per debug
+        console.log('[OTA] req.file.path:', req.file.path);
+        console.log('[OTA] binPath:', binPath);
+
         const version = (req.body?.version || '').toString().trim();
         if (!version) {
             console.log('[OTA] Version mancante');
