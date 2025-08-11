@@ -100,50 +100,61 @@ app.get('/config/frontend', (_req, res) => {
 
 // Upload firmware OTA (+ genera manifest + publish retained)
 app.post('/upload-firmware', upload.single('firmware'), async (req, res) => {
+    console.log('[OTA] Inizio upload');
     try {
         if (OTA_TOKEN) {
             const auth = (req.headers.authorization || '').trim();
             if (!auth.startsWith('Bearer ') || auth.slice(7) !== OTA_TOKEN) {
+                console.log('[OTA] Token non valido');
                 return res.status(401).json({ error: 'Unauthorized' });
             }
         }
 
-        if (!req.file) return res.status(400).json({ error: 'File mancante (campo "firmware")' });
-        const version = (req.body?.version || '').toString().trim();
-        const notes = (req.body?.notes || '').toString();
-        if (!version) return res.status(400).json({ error: 'Version mancante' });
+        if (!req.file) {
+            console.log('[OTA] Nessun file');
+            return res.status(400).json({ error: 'File mancante (campo "firmware")' });
+        }
+        console.log('[OTA] File ricevuto:', req.file);
 
-        // move con fallback copy+unlink (anti-EXDEV)
+        const version = (req.body?.version || '').toString().trim();
+        if (!version) {
+            console.log('[OTA] Version mancante');
+            return res.status(400).json({ error: 'Version mancante' });
+        }
+        console.log('[OTA] Version:', version);
+
+        // move con fallback
         try {
+            console.log('[OTA] Tentativo rename');
             await fsp.rename(req.file.path, binPath);
         } catch (e: any) {
-            console.warn('[OTA] rename fallita, faccio copy+unlink:', e?.message || e);
+            console.warn('[OTA] rename fallita:', e?.message);
+            console.log('[OTA] Tentativo copy+unlink');
             await fsp.copyFile(req.file.path, binPath);
             await fsp.unlink(req.file.path).catch(() => {});
         }
 
+        console.log('[OTA] Stat file destinazione');
         const stat = await fsp.stat(binPath);
+        console.log('[OTA] File size:', stat.size);
+
         const sha256 = await sha256File(binPath);
+        console.log('[OTA] SHA256:', sha256);
 
         const base = resolveBaseUrl(req);
         const url = `${base}/firmware/esp32.bin`;
+        const manifest = { version, url, sha256, size: stat.size, created_at: new Date().toISOString() };
 
-        const manifest = {
-            version, url, sha256, size: stat.size,
-            created_at: new Date().toISOString(),
-            notes,
-        };
-
+        console.log('[OTA] Scrittura manifest');
         await fsp.writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf-8');
 
-        console.log('✅ Firmware salvato:', binPath, 'size=', stat.size);
-        console.log('📝 Manifest aggiornato:', manifest);
-
+        console.log('[OTA] Publish retained');
         await publishRetained('bonsai/ota/available', JSON.stringify(manifest));
 
+        console.log('[OTA] Success');
         res.json({ success: true, manifest });
     } catch (err: any) {
-        console.error('❌ Errore upload OTA:', err?.stack || err);
+        console.error('❌ Errore upload OTA:', err);
         res.status(500).json({ error: 'Errore interno upload OTA' });
     } finally {
         if (req.file && fs.existsSync(req.file.path)) {
@@ -151,6 +162,7 @@ app.post('/upload-firmware', upload.single('firmware'), async (req, res) => {
         }
     }
 });
+
 // Legge il manifest (utile per verifica)
 app.get('/firmware/manifest.json', async (_req, res) => {
     try {
