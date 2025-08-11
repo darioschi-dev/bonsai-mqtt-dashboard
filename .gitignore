@@ -151,3 +151,4 @@ mosquitto/config/passwd
 data/
 dist/
 log
+.idea

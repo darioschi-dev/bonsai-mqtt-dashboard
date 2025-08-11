@@ -25,10 +25,22 @@ services:
     restart: unless-stopped
 
   mongo:
-    image: mongo:6
+    image: mongo:4.4.18
     container_name: mongodb
     ports:
-      - "27017:27017"
+      - "${MONGO_PORT:-27017}:27017"
+    command:
+      - "--wiredTigerCacheSizeGB"
+      - "0.25"
+      - "--setParameter"
+      - "wiredTigerConcurrentReadTransactions=32"
+      - "--setParameter"
+      - "wiredTigerConcurrentWriteTransactions=16"
     volumes:
       - ./data/mongodb:/data/db
     restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
