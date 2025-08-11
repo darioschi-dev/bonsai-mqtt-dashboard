@@ -10,11 +10,17 @@ BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo master)"
 git fetch --all --prune
 git reset --hard "origin/$BRANCH"
 
-echo "==> Rebuild & restart (pull base images)"
+echo "==> Rebuild dashboard (multi-stage) & restart"
 cd "$STACK_DIR"
-docker compose pull --ignore-buildable || true
-docker compose build --no-cache
-docker compose up -d --force-recreate
+
+# Aggiorna eventuali immagini di base (solo se vuoi aggiornare anche mongo/mqtt)
+docker compose pull --ignore-buildable
+
+# Ricostruisce solo l'immagine dashboard, senza cache
+docker compose build --no-cache dashboard
+
+# Riavvia dashboard mantenendo mqtt e mongo attivi
+docker compose up -d dashboard
 
 echo "==> Versione sorgenti:"
 git -C "$APP_DIR" --no-pager log -1 --oneline
