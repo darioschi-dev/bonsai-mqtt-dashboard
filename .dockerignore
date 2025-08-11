@@ -1,0 +1,27 @@
+# Volumi/runtime: non inviarli nel build context
+data/
+uploads/
+mosquitto/
+
+# Dipendenze locali e cache
+node_modules/
+npm-debug.log*
+pnpm-lock.yaml
+yarn-error.log
+
+# Artefatti di build/test
+dist/
+build/
+coverage/
+*.log
+
+# VCS & editor
+.git
+.gitignore
+.vscode/
+.idea/
+.DS_Store
+
+# Env locali (usa env_file nel compose)
+.env
+.env.*
