@@ -1,15 +1,15 @@
 // index.ts
-import express from 'express';
+import express, {Request, Response, NextFunction} from 'express';
 import path from 'path';
 import dotenv from 'dotenv';
 import multer from 'multer';
 import fs from 'fs';
 import fsp from 'fs/promises';
 import crypto from 'crypto';
-import { fileURLToPath } from 'url';
+import {fileURLToPath} from 'url';
 
-import { setupMqttClient, publishRetained } from './mqttClient.js';
-import { getLatestLogs } from './dataLogger.js';
+import {setupMqttClient, publishRetained} from './mqttClient.js';
+import {getLatestLogs, getOtaAcks} from './dataLogger.js';
 
 // __dirname compat ESM
 const __filename = fileURLToPath(import.meta.url);
@@ -27,14 +27,14 @@ const app = express();
 
 /* ---------- Helpers ---------- */
 
-function resolveBaseUrl(req: express.Request): string {
+function resolveBaseUrl(req: Request): string {
     if (BASE_URL_ENV) return BASE_URL_ENV.replace(/\/+$/, '');
     const proto = (req.headers['x-forwarded-proto'] as string) || req.protocol || 'http';
     const host = ((req.headers['x-forwarded-host'] as string) || req.headers.host || '').split(',')[0].trim();
     return `${proto}://${host}`;
 }
 
-async function sha256File(filePath: string) {
+async function sha256File(filePath: string): Promise<string> {
     return new Promise<string>((resolve, reject) => {
         const h = crypto.createHash('sha256');
         const s = fs.createReadStream(filePath);
@@ -53,17 +53,34 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 const firmwareDir = path.resolve(__dirname, '..', 'uploads', 'firmware');
 const tmpDir = path.resolve(__dirname, '..', 'uploads', 'tmp');
 
-// Creazione cartelle PRIMA di usare multer
-await fsp.mkdir(firmwareDir, { recursive: true });
-await fsp.mkdir(tmpDir, { recursive: true });
+await fsp.mkdir(firmwareDir, {recursive: true});
+await fsp.mkdir(tmpDir, {recursive: true});
 
 // Multer salva direttamente nel volume condiviso
-const upload = multer({ dest: tmpDir });
+const upload = multer({
+    dest: tmpDir,
+    limits: {fileSize: 4 * 1024 * 1024},
+    fileFilter: (_req, file, cb) => {
+        if (file.fieldname !== 'firmware') {
+            return cb(new multer.MulterError('LIMIT_UNEXPECTED_FILE'));
+        }
+        cb(null, true);
+    }
+});
 
 const binPath = path.join(firmwareDir, 'esp32.bin');
 const manifestPath = path.join(firmwareDir, 'manifest.json');
 
-app.use('/firmware', express.static(firmwareDir)); // serve /firmware/esp32.bin e /firmware/manifest.json
+// Cache-Control OTA
+app.get('/firmware/manifest.json', (_req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store');
+    next();
+});
+app.get('/firmware/esp32.bin', (_req, res, next) => {
+    res.setHeader('Cache-Control', 'no-cache');
+    next();
+});
+app.use('/firmware', express.static(firmwareDir));
 
 // Se la richiesta arriva all'host di update, consenti SOLO le rotte OTA
 app.use((req, res, next) => {
@@ -82,13 +99,11 @@ app.use((req, res, next) => {
 
 /* ---------- API utili ---------- */
 
-// Ultimi log MQTT
 app.get('/api/logs', async (_req, res) => {
     const logs = await getLatestLogs(100);
     res.json(logs);
 });
 
-// Config per frontend (MQTT over WS)
 app.get('/config/frontend', (_req, res) => {
     res.json({
         mqtt_ws_host: process.env.MQTT_WS_HOST || '',
@@ -99,59 +114,52 @@ app.get('/config/frontend', (_req, res) => {
 
 /* ---------- OTA upload & announce ---------- */
 
-// Upload firmware OTA (+ genera manifest + publish retained)
-app.post('/upload-firmware', upload.single('firmware'), async (req, res) => {
+let uploading = false;
+
+app.post('/upload-firmware', upload.single('firmware'), async (req: Request, res: Response) => {
     console.log('[OTA] Inizio upload');
+
+    if (uploading) {
+        return res.status(409).json({error: 'Upload già in corso'});
+    }
+    uploading = true;
+
     try {
         if (OTA_TOKEN) {
             const auth = (req.headers.authorization || '').trim();
             if (!auth.startsWith('Bearer ') || auth.slice(7) !== OTA_TOKEN) {
                 console.log('[OTA] Token non valido');
-                return res.status(401).json({ error: 'Unauthorized' });
+                return res.status(401).json({error: 'Unauthorized'});
             }
         }
 
         if (!req.file) {
             console.log('[OTA] Nessun file');
-            return res.status(400).json({ error: 'File mancante (campo "firmware")' });
+            return res.status(400).json({error: 'File mancante (campo "firmware")'});
         }
         console.log('[OTA] File ricevuto:', req.file);
-        console.log('[OTA] req.file.path:', req.file.path);
-        console.log('[OTA] binPath:', binPath);
 
         const version = (req.body?.version || '').toString().trim();
         if (!version) {
             console.log('[OTA] Version mancante');
-            return res.status(400).json({ error: 'Version mancante' });
+            return res.status(400).json({error: 'Version mancante'});
         }
         console.log('[OTA] Version:', version);
 
-        // move con fallback
-        try {
-            console.log('[OTA] Tentativo rename');
-            await fsp.rename(req.file.path, binPath);
-        } catch (e: any) {
-            if (e.code === 'EXDEV') {
-                console.warn('[OTA] rename fallita:', e?.message);
-                console.log('[OTA] Tentativo copy+unlink');
-                await fsp.copyFile(req.file.path, binPath);
-                await fsp.unlink(req.file.path);
-            } else {
-                console.error('[OTA] rename fallita:', e?.message);
-                return res.status(500).json({ error: 'Errore interno rename' });
-            }
-        }
+        const tmpAtomic = path.join(firmwareDir, `.esp32.bin.tmp`);
+        console.log('[OTA] Tentativo rename atomico');
+        await fsp.rename(req.file.path, tmpAtomic);
 
-        console.log('[OTA] Stat file destinazione');
-        const stat = await fsp.stat(binPath);
-        console.log('[OTA] File size:', stat.size);
+        console.log('[OTA] Calcolo SHA256 e size');
+        const sha256 = await sha256File(tmpAtomic);
+        const stat = await fsp.stat(tmpAtomic);
 
-        const sha256 = await sha256File(binPath);
-        console.log('[OTA] SHA256:', sha256);
+        console.log('[OTA] Rename finale su esp32.bin');
+        await fsp.rename(tmpAtomic, binPath);
 
         const base = resolveBaseUrl(req);
         const url = `${base}/firmware/esp32.bin`;
-        const manifest = { version, url, sha256, size: stat.size, created_at: new Date().toISOString() };
+        const manifest = {version, url, sha256, size: stat.size, created_at: new Date().toISOString()};
 
         console.log('[OTA] Scrittura manifest');
         await fsp.writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf-8');
@@ -160,42 +168,57 @@ app.post('/upload-firmware', upload.single('firmware'), async (req, res) => {
         await publishRetained('bonsai/ota/available', JSON.stringify(manifest));
 
         console.log('[OTA] Success');
-        res.json({ success: true, manifest });
+        res.json({success: true, manifest});
     } catch (err: any) {
         console.error('❌ Errore upload OTA:', err);
-        res.status(500).json({ error: 'Errore interno upload OTA' });
+        await fsp.rm(path.join(firmwareDir, `.esp32.bin.tmp`), {force: true});
+        res.status(500).json({error: 'Errore interno upload OTA'});
     } finally {
+        uploading = false;
         if (req.file && fs.existsSync(req.file.path)) {
-            try { await fsp.unlink(req.file.path); } catch {}
+            try {
+                await fsp.unlink(req.file.path);
+            } catch {
+            }
         }
     }
 });
 
-// Legge il manifest (utile per verifica)
+app.post('/api/ota/announce', async (_req, res) => {
+    try {
+        const data = await fsp.readFile(manifestPath, 'utf-8');
+        await publishRetained('bonsai/ota/available', data);
+        res.json({ok: true});
+    } catch {
+        res.status(404).json({error: 'Manifest non trovato'});
+    }
+});
+
 app.get('/firmware/manifest.json', async (_req, res) => {
     try {
         const data = await fsp.readFile(manifestPath, 'utf-8');
         res.setHeader('Content-Type', 'application/json');
         res.send(data);
     } catch {
-        res.status(404).json({ error: 'Manifest non trovato' });
+        res.status(404).json({error: 'Manifest non trovato'});
     }
 });
 
-// Ripubblica ultimo manifest (retain) su richiesta
-app.post('/api/ota/announce', async (_req, res) => {
-    try {
-        const data = await fsp.readFile(manifestPath, 'utf-8');
-        await publishRetained('bonsai/ota/available', data);
-        res.json({ ok: true });
-    } catch {
-        res.status(404).json({ error: 'Manifest non trovato' });
-    }
+app.get('/api/ota/acks', async (req, res) => {
+    const limit = Math.max(1, Math.min(500, parseInt(String(req.query.limit ?? '50'), 10) || 50));
+    res.json(await getOtaAcks(limit));
 });
-
 /* ---------- Avvio ---------- */
 
 setupMqttClient();
+
+// Error handler tipizzato
+app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+    if (err instanceof multer.MulterError) {
+        return res.status(400).json({error: 'MulterError', code: err.code});
+    }
+    res.status(500).json({error: 'Errore interno', details: (err as Error)?.message});
+});
 
 app.listen(PORT, HOST, () => {
     console.log(`🌱 Dashboard server avviato su http://${HOST}:${PORT}`);

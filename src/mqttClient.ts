@@ -1,56 +1,115 @@
-// mqttClient.ts
-import mqtt, { MqttClient } from 'mqtt';
-import { saveMqttLog } from './dataLogger.js';
+// src/mqttClient.ts
+import mqtt, { MqttClient, IClientOptions } from 'mqtt';
+import { saveMqttLog, saveOtaAck } from './dataLogger.js';
 
-let client: MqttClient;
+let client: MqttClient | undefined;
 
-export function setupMqttClient() {
+function buildClientId() {
+    const base = process.env.MQTT_CLIENT_ID || 'bonsai-dashboard';
+    const rand = Math.random().toString(16).slice(2, 8);
+    return `${base}-${process.pid}-${rand}`;
+}
+
+export function setupMqttClient(): void {
     const mqttUrl = process.env.MQTT_URL || 'mqtt://localhost:1883';
 
-    client = mqtt.connect(mqttUrl, {
+    const isSecure = mqttUrl.startsWith('mqtts://') || mqttUrl.startsWith('wss://');
+    const protocol = mqttUrl.startsWith('wss://')
+        ? 'wss'
+        : mqttUrl.startsWith('ws://')
+            ? 'ws'
+            : isSecure
+                ? 'mqtts'
+                : 'mqtt';
+
+    const options: IClientOptions = {
+        clientId: buildClientId(),
         username: process.env.MQTT_USERNAME,
         password: process.env.MQTT_PASSWORD,
-        protocol: mqttUrl.startsWith('mqtts') ? 'mqtts' : 'mqtt',
-    });
+        protocol,
+        reconnectPeriod: 2000,
+        clean: true,
+        keepalive: 60,
+    };
+
+    client = mqtt.connect(mqttUrl, options);
 
     client.on('connect', () => {
         console.log('📡 MQTT connesso');
-        client.subscribe('bonsai/status/#', (err: Error | null) => {
-            if (err) console.error('❌ Errore sottoscrizione topic:', err.message);
+
+        client!.subscribe('bonsai/status/#', (err) => {
+            if (err) console.error('❌ Sub bonsai/status/#:', err.message);
+        });
+
+        client!.subscribe('bonsai/ota/ack/#', (err) => {
+            if (err) console.error('❌ Sub bonsai/ota/ack/#:', err.message);
         });
     });
+
+    client.on('reconnect', () => console.log('↩️  MQTT reconnecting…'));
+    client.on('close', () => console.log('🔌 MQTT disconnected'));
+    client.on('error', (err) => console.error('❌ Errore client MQTT:', err.message));
 
     client.on('message', async (topic: string, payload: Buffer) => {
         const message = payload.toString();
-        console.log(`[MQTT] ${topic} => ${message}`);
-        await saveMqttLog(topic, message);
-    });
 
-    client.on('error', (err: Error) => {
-        console.error('❌ Errore client MQTT:', err.message);
-    });
-}
-
-export function publishMqttCommand(topic: string, payload: string) {
-    if (client && client.connected) {
-        client.publish(topic, payload, { retain: false }, (err?: Error) => {
-            if (err) console.error('Errore invio comando MQTT:', err.message);
-            else console.log(`📤 Pub (${topic}): ${payload}`);
-        });
-    } else {
-        console.warn('⚠️ MQTT non connesso. Impossibile pubblicare.');
-    }
-}
-
-export function publishRetained(topic: string, payload: string) {
-    return new Promise<void>((resolve, reject) => {
-        if (!client || !client.connected) {
-            console.warn('⚠️ MQTT non connesso. Impossibile pubblicare retain.');
-            return reject(new Error('MQTT non connesso'));
+        // salva comunque il messaggio grezzo nei log
+        try {
+            await saveMqttLog(topic, message);
+        } catch (e: any) {
+            console.warn('⚠️ saveMqttLog failed:', e?.message || e);
         }
-        client.publish(topic, payload, { retain: true }, (err?: Error) => {
+
+        // gestione specifica degli ACK OTA
+        if (topic.startsWith('bonsai/ota/ack/')) {
+            const parts = topic.split('/');
+            const device = parts[3] || 'unknown';
+            try {
+                const parsed = JSON.parse(message);
+                await saveOtaAck({
+                    device,
+                    version: String(parsed.version ?? ''),
+                    status: (parsed.status as 'applied' | 'failed' | 'skipped') ?? 'failed',
+                    duration_ms: parsed.duration_ms,
+                    reason: parsed.reason,
+                    raw: parsed,
+                });
+                console.log('📬 OTA ACK salvato:', { device, version: parsed.version, status: parsed.status });
+            } catch {
+                await saveOtaAck({
+                    device,
+                    version: '',
+                    status: 'failed',
+                    reason: 'invalid_json',
+                    raw: message,
+                });
+                console.warn('⚠️ OTA ACK non JSON:', message);
+            }
+        }
+    });
+}
+
+export function publishMqttCommand(topic: string, payload: string): void {
+    if (!client || !client.connected) {
+        console.warn('⚠️ MQTT non connesso. Impossibile pubblicare:', topic);
+        return;
+    }
+    client.publish(topic, payload, { qos: 0, retain: false }, (err?: Error) => {
+        if (err) console.error('❌ Errore publish command:', err.message);
+        else console.log(`📤 Pub (${topic}): ${payload}`);
+    });
+}
+
+export function publishRetained(topic: string, payload: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+        if (!client || !client.connected) {
+            const e = new Error('MQTT non connesso');
+            console.warn('⚠️', e.message);
+            return reject(e);
+        }
+        client.publish(topic, payload, { qos: 0, retain: true }, (err?: Error) => {
             if (err) {
-                console.error('Errore publish retain:', err.message);
+                console.error('❌ Errore publish retain:', err.message);
                 reject(err);
             } else {
                 console.log(`📌 Pub retain (${topic}): ${payload}`);

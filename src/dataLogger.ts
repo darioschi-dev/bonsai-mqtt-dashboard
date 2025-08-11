@@ -49,3 +49,41 @@ export async function getLatestLogs(limit = 100) {
         .limit(limit)
         .toArray();
 }
+
+// ===== OTA ACK logging =====
+const ackCollectionName = process.env.MONGODB_ACK_COLLECTION || 'ota_acks';
+
+async function getDb() {
+    if (!isConnected) await connectMongo();
+    return client.db(dbName);
+}
+
+export interface OtaAck {
+    device: string;
+    version: string;
+    status: 'applied' | 'failed' | 'skipped';
+    duration_ms?: number;
+    reason?: string;
+    received_at?: Date;
+    raw?: any;
+}
+
+export async function saveOtaAck(ack: OtaAck) {
+    const db = await getDb();
+    const col = db.collection(ackCollectionName);
+    const doc = {
+        ...ack,
+        received_at: ack.received_at ?? new Date(),
+    };
+    await col.insertOne(doc);
+}
+
+export async function getOtaAcks(limit = 50) {
+    const db = await getDb();
+    const col = db.collection(ackCollectionName);
+    return col
+        .find({})
+        .sort({ received_at: -1 })
+        .limit(limit)
+        .toArray();
+}
