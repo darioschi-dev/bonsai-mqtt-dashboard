@@ -33,7 +33,7 @@ services:
       dockerfile: Dockerfile       # se il nome resta quello predefinito, puoi anche omettere questa riga
     container_name: bonsai-backend
     env_file:
-      - ./app/.env
+      - ./.env
     environment:
       - NODE_OPTIONS=--max-old-space-size=192
     ports:
