@@ -29,7 +29,7 @@ services:
 
   dashboard:
     build:
-      context: ./app               # directory dove sta il Dockerfile multi-stage
+      context: .               # directory dove sta il Dockerfile multi-stage
       dockerfile: Dockerfile       # se il nome resta quello predefinito, puoi anche omettere questa riga
     container_name: bonsai-backend
     env_file:
