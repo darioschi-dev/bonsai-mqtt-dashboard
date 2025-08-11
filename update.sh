@@ -2,7 +2,7 @@
 set -euo pipefail
 
 STACK_DIR="/opt/bonsai-stack"
-APP_DIR="$STACK_DIR/app"
+APP_DIR="$STACK_DIR"
 
 echo "==> Pull Git"
 cd "$APP_DIR"
