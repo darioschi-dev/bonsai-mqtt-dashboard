@@ -136,6 +136,7 @@ dist
 
 # Escludi dati runtime
 data/mongodb/
+mosquitto/config/
 mosquitto/data/
 mosquitto/log/
 uploads/
