@@ -4,7 +4,7 @@ on:
   push:
     branches: [ master ]     # o main
     paths:
-      - "app/**"
+      - "src/**"
       - "mosquitto/**"
       - "data/**"
       - "compose.yaml"
