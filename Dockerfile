@@ -27,7 +27,7 @@ RUN npm ci --omit=dev
 
 # Copia i file compilati e le risorse statiche dallo stage builder
 COPY --from=builder /app/dist ./dist
-# ✅ copia dal builder, non dall'host
+# copia dal builder, non dall'host
 COPY --from=builder /app/public ./public
 
 # Prepara cartelle di upload

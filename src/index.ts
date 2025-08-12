@@ -25,6 +25,8 @@ const OTA_TOKEN = process.env.OTA_TOKEN || '';   // opzionale: auth bearer per /
 
 const app = express();
 
+const configFile = path.resolve(__dirname, '..', 'uploads', 'config.json');
+
 /* ---------- Helpers ---------- */
 
 function resolveBaseUrl(req: Request): string {
@@ -114,6 +116,63 @@ app.get('/config/frontend', (_req, res) => {
 
 app.get('/status', (_req, res) => {
     res.json(getLatestStatus());
+});
+
+const defaultDeviceConfig = {
+    wifi_ssid: "", wifi_password: "",
+    mqtt_broker: "", mqtt_port: 8883, mqtt_username: "", mqtt_password: "",
+    sensor_pin: 32, pump_pin: 26, relay_pin: 27, battery_pin: 34,
+    moisture_threshold: 25, pump_duration: 5, measurement_interval: 1800000,
+    debug: false, use_pump: false, sleep_hours: 0,
+    use_dhcp: true, ip_address: "", gateway: "", subnet: ""
+};
+
+// GET config (per la UI)
+app.get('/api/config', async (_req, res) => {
+    try {
+        const buf = await fsp.readFile(configFile, 'utf-8');
+        return res.json(JSON.parse(buf));
+    } catch {
+        return res.json(defaultDeviceConfig);
+    }
+});
+
+// POST config: salva + MQTT retained
+app.post('/api/config', express.json({ limit: '256kb' }), async (req, res) => {
+    try {
+        // 1) merge con default e validazione minima
+        const cfg = { ...defaultDeviceConfig, ...(req.body || {}) };
+        if (cfg.mqtt_port <= 0 || cfg.mqtt_port > 65535) {
+            return res.status(400).json({ error: 'invalid_mqtt_port' });
+        }
+
+        // 2) salva su disco (audit/backup)
+        await fsp.writeFile(configFile, JSON.stringify(cfg, null, 2), 'utf-8');
+
+        // 3) pubblica su MQTT retained (topic “config”)
+        await publishRetained('bonsai/config', JSON.stringify(cfg));
+
+        // 4) (opzionale) chiedi all’ESP di ricaricare subito
+        // await publishRetained('bonsai/command/reload_config', Date.now().toString());
+
+        return res.json({ ok: true });
+    } catch (e: any) {
+        console.error('❌ /api/config failed:', e?.message || e);
+        return res.status(500).json({ error: 'config_write_or_publish_failed' });
+    }
+});
+
+// Ripubblica l’ultima config senza riscrivere file
+app.post('/api/config/push', async (_req, res) => {
+    try {
+        const buf = await fsp.readFile(configFile, 'utf-8');
+        await publishRetained('bonsai/config', buf);
+        return res.json({ ok: true });
+    } catch {
+        // se non esiste, manda default
+        await publishRetained('bonsai/config', JSON.stringify(defaultDeviceConfig));
+        return res.json({ ok: true, default: true });
+    }
 });
 
 /* ---------- OTA upload & announce ---------- */
