@@ -43,10 +43,8 @@ services:
       - NODE_OPTIONS=--max-old-space-size=192
     ports:
       - "${PORT:-3000}:3000"
-    # Volumi per file dinamici, senza toccare dist/
     volumes:
-      - ./app/public:/app/public
-      - ./app/uploads:/app/uploads
+      - ./app/uploads:/app/uploads   # ✅ solo upload dinamici
     depends_on:
       - mqtt
       - mongo

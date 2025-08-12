@@ -9,7 +9,7 @@ COPY package*.json ./
 # Installa tutte le dipendenze (incluso dev)
 RUN npm ci
 
-# Copia il resto del codice
+# Copia tutto il codice sorgente
 COPY . .
 
 # Compila TypeScript
@@ -21,16 +21,17 @@ FROM node:20-slim AS runtime
 
 WORKDIR /app
 
-# Copia solo package.json per installare solo le deps runtime
+# Copia solo package.json per installare deps di produzione
 COPY package*.json ./
-
-# Installa solo production dependencies
 RUN npm ci --omit=dev
 
-# Copia i file compilati e le altre risorse necessarie
+# Copia i file compilati e le risorse statiche dallo stage builder
 COPY --from=builder /app/dist ./dist
-COPY public ./public
-RUN mkdir -p uploads
+# ✅ copia dal builder, non dall'host
+COPY --from=builder /app/public ./public
+
+# Prepara cartelle di upload
+RUN mkdir -p uploads/firmware uploads/tmp
 
 # Espone la porta dell'app
 EXPOSE 3000
