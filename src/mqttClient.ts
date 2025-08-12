@@ -4,6 +4,22 @@ import { saveMqttLog, saveOtaAck } from './dataLogger.js';
 
 let client: MqttClient | undefined;
 
+// Stato in memoria per /status
+let latestStatus: Record<string, any> = {
+    pump: '-',
+    humidity: '-',
+    last_on: '-',
+    last_seen: '-',
+    battery: '-',
+    temp: '-',
+    wifi: '-',
+    firmware: '-'
+};
+
+export function getLatestStatus() {
+    return latestStatus;
+}
+
 function buildClientId() {
     const base = process.env.MQTT_CLIENT_ID || 'bonsai-dashboard';
     const rand = Math.random().toString(16).slice(2, 8);
@@ -41,6 +57,10 @@ export function setupMqttClient(): void {
             if (err) console.error('❌ Sub bonsai/status/#:', err.message);
         });
 
+        client!.subscribe('bonsai/info/firmware', (err) => {
+            if (err) console.error('❌ Sub bonsai/info/firmware:', err.message);
+        });
+
         client!.subscribe('bonsai/ota/ack/#', (err) => {
             if (err) console.error('❌ Sub bonsai/ota/ack/#:', err.message);
         });
@@ -53,14 +73,23 @@ export function setupMqttClient(): void {
     client.on('message', async (topic: string, payload: Buffer) => {
         const message = payload.toString();
 
-        // salva comunque il messaggio grezzo nei log
+        // Log sul DB
         try {
             await saveMqttLog(topic, message);
         } catch (e: any) {
             console.warn('⚠️ saveMqttLog failed:', e?.message || e);
         }
 
-        // gestione specifica degli ACK OTA
+        // Aggiorna stato in RAM
+        if (topic.startsWith('bonsai/status/')) {
+            const key = topic.replace('bonsai/status/', '');
+            latestStatus[key] = isNaN(Number(message)) ? message : Number(message);
+        }
+        if (topic === 'bonsai/info/firmware') {
+            latestStatus.firmware = message;
+        }
+
+        // Gestione ACK OTA
         if (topic.startsWith('bonsai/ota/ack/')) {
             const parts = topic.split('/');
             const device = parts[3] || 'unknown';

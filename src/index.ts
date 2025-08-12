@@ -8,7 +8,7 @@ import fsp from 'fs/promises';
 import crypto from 'crypto';
 import {fileURLToPath} from 'url';
 
-import {setupMqttClient, publishRetained} from './mqttClient.js';
+import {setupMqttClient, publishRetained, getLatestStatus} from './mqttClient.js';
 import {ensureMongoIndexes, getLatestLogs, getOtaAcks} from './dataLogger.js';
 
 // __dirname compat ESM
@@ -110,6 +110,10 @@ app.get('/config/frontend', (_req, res) => {
         mqtt_username: process.env.MQTT_USERNAME || '',
         mqtt_password: process.env.MQTT_PASSWORD || '',
     });
+});
+
+app.get('/status', (_req, res) => {
+    res.json(getLatestStatus());
 });
 
 /* ---------- OTA upload & announce ---------- */
