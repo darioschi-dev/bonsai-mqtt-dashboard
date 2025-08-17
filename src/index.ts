@@ -61,9 +61,10 @@ await fsp.mkdir(tmpDir, {recursive: true});
 // Multer salva direttamente nel volume condiviso
 const upload = multer({
     dest: tmpDir,
-    limits: {fileSize: 4 * 1024 * 1024},
+    limits: { fileSize: 4 * 1024 * 1024 }, // 4 MB: ampio per ESP32
     fileFilter: (_req, file, cb) => {
-        if (file.fieldname !== 'firmware') {
+        // accettiamo "firmware" e (opzionale) "version_file"
+        if (file.fieldname !== 'firmware' && file.fieldname !== 'version_file') {
             return cb(new multer.MulterError('LIMIT_UNEXPECTED_FILE'));
         }
         cb(null, true);
@@ -179,71 +180,110 @@ app.post('/api/config/push', async (_req, res) => {
 
 let uploading = false;
 
-app.post('/upload-firmware', upload.single('firmware'), async (req: Request, res: Response) => {
-    console.log('[OTA] Inizio upload');
+app.post('/upload-firmware',
+    upload.fields([
+        { name: 'firmware', maxCount: 1 },
+        { name: 'version_file', maxCount: 1 }
+    ]),
+    async (req: Request, res: Response) => {
+        console.log('[OTA] Inizio upload');
 
-    if (uploading) {
-        return res.status(409).json({error: 'Upload già in corso'});
+        if (uploading) return res.status(409).json({ error: 'Upload già in corso' });
+        uploading = true;
+
+        try {
+            if (OTA_TOKEN) {
+                const auth = (req.headers.authorization || '').trim();
+                if (!auth.startsWith('Bearer ') || auth.slice(7) !== OTA_TOKEN) {
+                    console.log('[OTA] Token non valido');
+                    return res.status(401).json({ error: 'Unauthorized' });
+                }
+            }
+
+            const fw = (req.files as any)?.firmware?.[0];
+            if (!fw) {
+                console.log('[OTA] Nessun file firmware');
+                return res.status(400).json({ error: 'File mancante (campo "firmware")' });
+            }
+            console.log('[OTA] File ricevuto:', fw.originalname, fw.size, 'bytes');
+
+            // Version: priorità a version_file, fallback a "version" form
+            let version = '';
+            const versionFile = (req.files as any)?.version_file?.[0];
+            if (versionFile) {
+                try {
+                    version = (await fsp.readFile(versionFile.path, 'utf-8')).trim();
+                } catch { /* ignora, si userà req.body.version */ }
+            }
+            if (!version) version = (req.body?.version || '').toString().trim();
+
+            if (!version) {
+                console.log('[OTA] Version mancante');
+                return res.status(400).json({ error: 'Version mancante' });
+            }
+
+            // Regex: semver (vX.Y.Z), timestamp (YYYYMMDDHHMM) o combined (vX.Y.Z+YYYYMMDDHHMM)
+            const reSemver = /^v\d+\.\d+\.\d+$/;
+            const reTs     = /^\d{12}$/;
+            const reComb   = /^v\d+\.\d+\.\d+\+\d{12}$/;
+
+            if (!(reSemver.test(version) || reTs.test(version) || reComb.test(version))) {
+                return res.status(400).json({ error: 'Version non valida. Attesi: vX.Y.Z | YYYYMMDDHHMM | vX.Y.Z+YYYYMMDDHHMM' });
+            }
+            // Limite pratico per campo version (esp_app_desc_t version è 32B incl. terminatore)
+            if (version.length > 31) {
+                return res.status(400).json({ error: 'Version troppo lunga (max 31 caratteri)' });
+            }
+
+            // Move atomico nel medesimo FS
+            const tmpAtomic = path.join(firmwareDir, `.esp32.bin.tmp`);
+            await fsp.rename(fw.path, tmpAtomic);
+
+            // SHA256 + size
+            const sha256 = await sha256File(tmpAtomic);
+            const stat   = await fsp.stat(tmpAtomic);
+
+            // Rename finale
+            await fsp.rename(tmpAtomic, binPath);
+
+            const base = resolveBaseUrl(req);
+            const url  = `${base}/firmware/esp32.bin`;
+            const manifest = {
+                version, url, sha256, size: stat.size,
+                created_at: new Date().toISOString()
+            };
+
+            await fsp.writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf-8');
+
+            // Annuncio su MQTT (retained)
+            await publishRetained('bonsai/ota/available', JSON.stringify(manifest));
+
+            console.log('[OTA] Success', version);
+            res.json({ success: true, manifest });
+        } catch (err: any) {
+            console.error('❌ Errore upload OTA:', err?.message || err);
+            // pulizia tmp
+            try { await fsp.rm(path.join(firmwareDir, `.esp32.bin.tmp`), { force: true }); } catch {}
+            res.status(500).json({ error: 'Errore interno upload OTA' });
+        } finally {
+            uploading = false;
+            // cleanup multer tmp
+            const files: any = req.files || {};
+            for (const key of Object.keys(files)) {
+                for (const f of files[key] as Array<{ path: string }>) {
+                    try { if (f?.path && fs.existsSync(f.path)) await fsp.unlink(f.path); } catch {}
+                }
+            }
+        }
     }
-    uploading = true;
+);
 
+app.get('/api/firmware/version', async (_req, res) => {
     try {
-        if (OTA_TOKEN) {
-            const auth = (req.headers.authorization || '').trim();
-            if (!auth.startsWith('Bearer ') || auth.slice(7) !== OTA_TOKEN) {
-                console.log('[OTA] Token non valido');
-                return res.status(401).json({error: 'Unauthorized'});
-            }
-        }
-
-        if (!req.file) {
-            console.log('[OTA] Nessun file');
-            return res.status(400).json({error: 'File mancante (campo "firmware")'});
-        }
-        console.log('[OTA] File ricevuto:', req.file);
-
-        const version = (req.body?.version || '').toString().trim();
-        if (!version) {
-            console.log('[OTA] Version mancante');
-            return res.status(400).json({error: 'Version mancante'});
-        }
-        console.log('[OTA] Version:', version);
-
-        const tmpAtomic = path.join(firmwareDir, `.esp32.bin.tmp`);
-        console.log('[OTA] Tentativo rename atomico');
-        await fsp.rename(req.file.path, tmpAtomic);
-
-        console.log('[OTA] Calcolo SHA256 e size');
-        const sha256 = await sha256File(tmpAtomic);
-        const stat = await fsp.stat(tmpAtomic);
-
-        console.log('[OTA] Rename finale su esp32.bin');
-        await fsp.rename(tmpAtomic, binPath);
-
-        const base = resolveBaseUrl(req);
-        const url = `${base}/firmware/esp32.bin`;
-        const manifest = {version, url, sha256, size: stat.size, created_at: new Date().toISOString()};
-
-        console.log('[OTA] Scrittura manifest');
-        await fsp.writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf-8');
-
-        console.log('[OTA] Publish retained');
-        await publishRetained('bonsai/ota/available', JSON.stringify(manifest));
-
-        console.log('[OTA] Success');
-        res.json({success: true, manifest});
-    } catch (err: any) {
-        console.error('❌ Errore upload OTA:', err);
-        await fsp.rm(path.join(firmwareDir, `.esp32.bin.tmp`), {force: true});
-        res.status(500).json({error: 'Errore interno upload OTA'});
-    } finally {
-        uploading = false;
-        if (req.file && fs.existsSync(req.file.path)) {
-            try {
-                await fsp.unlink(req.file.path);
-            } catch {
-            }
-        }
+        const data = JSON.parse(await fsp.readFile(manifestPath, 'utf-8'));
+        res.json({ version: data.version, size: data.size, sha256: data.sha256, url: data.url, created_at: data.created_at });
+    } catch {
+        res.status(404).json({ error: 'Manifest non trovato' });
     }
 });
 
