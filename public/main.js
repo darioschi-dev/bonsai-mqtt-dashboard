@@ -71,68 +71,69 @@ function controllaPompa(action) {
     });
 }
 
-function millisToAgo(ms) {
-    const uptime = parseInt(ms);
-    const now = Date.now();
-    const bootTime = now - uptime;
-    const secondsAgo = Math.floor((now - bootTime) / 1000);
-
-    if (secondsAgo < 60) return `${secondsAgo}s fa`;
-    const minutes = Math.floor(secondsAgo / 60);
-    if (minutes < 60) return `${minutes}min fa`;
-    const hours = Math.floor(minutes / 60);
-    return `${hours}h fa`;
+function millisToAgo(tsMs) {
+    const diff = Date.now() - Number(tsMs);
+    if (diff < 0) return "-";
+    const s = Math.floor(diff / 1000);
+    if (s < 60) return `${s}s fa`;
+    const m = Math.floor(s / 60);
+    if (m < 60) return `${m}min fa`;
+    const h = Math.floor(m / 60);
+    return `${h}h fa`;
 }
 
-function aggiornaDashboard(data) {
-    for (const key in data) {
-        const el = document.getElementById(key);
-
-        // ⏱ Format speciali per alcuni campi
-        if (key === "last_seen" && el) {
-            el.textContent = millisToAgo(data.last_seen);
-        } else if (key === "last_on" && el) {
-            const ts = Number(data.last_on);
-            if (ts > 0) {
-                const date = new Date(ts);
-                el.textContent = date.toLocaleString("it-IT", {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                    second: "2-digit",
-                    day: "2-digit",
-                    month: "2-digit",
-                    year: "numeric",
-                });
-            } else {
-                el.textContent = "-";
-            }
-        } else if (el) {
-            el.textContent = data[key] || "-";
-        }
-    }
-
-    aggiornaOnlineStatus(data.last_seen);
-    aggiornaHumidityCharts(data.humidity);
-}
-
-function aggiornaOnlineStatus(lastSeenMillis) {
+function aggiornaOnlineStatus(lastSeenTs) {
     const badge = document.getElementById("esp-status");
-
-    const diffSeconds = (Date.now() - (Date.now() - lastSeenMillis)) / 1000;
-
-    if (diffSeconds < 60) {
+    const ageSec = (Date.now() - Number(lastSeenTs)) / 1000;
+    if (ageSec < 90) {            // soglia: 90s
         badge.textContent = "Online";
         badge.className = "badge online";
     } else {
         badge.textContent = "Offline";
         badge.className = "badge offline";
     }
+}
 
-    // facoltativo: mostra tempo fa
-    const lastSeenEl = document.getElementById("last-seen-time");
-    if (lastSeenEl) {
-        lastSeenEl.textContent = millisToAgo(lastSeenMillis);
+// function aggiornaOnlineStatus(lastSeenMillis) {
+//  const badge = document.getElementById("esp-status");
+//
+//  const diffSeconds = (Date.now() - (Date.now() - lastSeenMillis)) / 1000;
+//
+//  if (diffSeconds < 60) {
+//      badge.textContent = "Online";
+//      badge.className = "badge online";
+//  } else {
+//      badge.textContent = "Offline";
+//      badge.className = "badge offline";
+//  }
+//
+//  // facoltativo: mostra tempo fa
+//  const lastSeenEl = document.getElementById("last-seen-time");
+//  if (lastSeenEl) {
+//      lastSeenEl.textContent = millisToAgo(lastSeenMillis);
+//  }
+// }
+
+function aggiornaDashboard(data) {
+    for (const key in data) {
+        const domId = (key === "last_seen_ts") ? "last_seen" : key; // 🔸 mapping
+        const el = document.getElementById(domId);
+
+        if (key === "last_seen_ts" && el) {
+            el.textContent = millisToAgo(data.last_seen_ts);
+        } else if (key === "last_on" && el) {
+            const ts = Number(data.last_on);
+            el.textContent = ts > 0
+                ? new Date(ts).toLocaleString("it-IT", { hour: "2-digit", minute: "2-digit", second: "2-digit", day: "2-digit", month: "2-digit", year: "numeric" })
+                : "-";
+        } else if (el) {
+            el.textContent = data[key] ?? "-";
+        }
     }
+
+    // 🔸 usa il timestamp assoluto, non l'uptime
+    aggiornaOnlineStatus(data.last_seen_ts);
+    aggiornaHumidityCharts(data.humidity);
 }
 
 function salvaConfigurazione() {

@@ -9,7 +9,8 @@ let latestStatus: Record<string, any> = {
     pump: '-',
     humidity: '-',
     last_on: '-',
-    last_seen: '-',
+    last_seen: '-',   // opzionale mantenere per retrocompat
+    last_seen_ts: 0,  // 🔸 NEW
     battery: '-',
     temp: '-',
     wifi: '-',
@@ -84,9 +85,12 @@ export function setupMqttClient(): void {
         if (topic.startsWith('bonsai/status/')) {
             const key = topic.replace('bonsai/status/', '');
             latestStatus[key] = isNaN(Number(message)) ? message : Number(message);
+            // timbra ogni messaggio STATUS
+            latestStatus.last_seen_ts = Date.now();
         }
         if (topic === 'bonsai/info/firmware') {
             latestStatus.firmware = message;
+            latestStatus.last_seen_ts = Date.now();
         }
 
         // Gestione ACK OTA
