@@ -1,24 +1,32 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-    <meta charset="UTF-8" />
-    <title>Bonsai MQTT Dashboard</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#28a745" />
-    <link rel="manifest" href="/manifest.json" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
-    <link rel="stylesheet" href="/style.css" />
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <meta charset="UTF-8" />
+  <title>Bonsai MQTT Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#28a745" />
+
+  <!-- PWA -->
+  <link rel="manifest" href="/manifest.json" />
+
+  <!-- UI -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <link rel="stylesheet" href="/style.css" />
+
+  <!-- Charts -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-<h1><i class="fas fa-seedling"></i> Bonsai MQTT Dashboard <span id="esp-status" class="badge offline">Offline</span></h1>
+  <h1><i class="fas fa-seedling"></i> Bonsai MQTT Dashboard
+    <span id="esp-status" class="badge offline">Offline</span>
+  </h1>
 
-<div class="controls">
-    <button class="btn-on" onclick="controllaPompa('on')">Accendi</button>
+  <div class="controls">
+    <button class="btn-on"  onclick="controllaPompa('on')">Accendi</button>
     <button class="btn-off" onclick="controllaPompa('off')">Spegni</button>
-</div>
+  </div>
 
-<div class="status-section">
+  <div class="status-section">
     <div class="card"><i class="fas fa-power-off"></i><h3>Pompa</h3><div class="value" id="pump">--</div></div>
     <div class="card"><i class="fas fa-tint"></i><h3>Umidità</h3><div class="value" id="humidity">--</div></div>
     <div class="card"><i class="fas fa-battery-half"></i><h3>Batteria</h3><div class="value" id="battery">--</div></div>
@@ -27,107 +35,112 @@
     <div class="card"><i class="fas fa-clock"></i><h3>Ultimo messaggio</h3><div class="value" id="last_seen">--</div></div>
     <div class="card"><i class="fas fa-calendar-plus"></i><h3>Ultima accensione</h3><div class="value" id="last_on">--</div></div>
     <div class="card"><i class="fas fa-microchip"></i><h3>Firmware</h3><div class="value" id="firmware">--</div></div>
-</div>
+  </div>
 
-<div id="humidity-chart-container">
-    <canvas id="humidityGauge"></canvas>
-</div>
+  <div id="humidity-chart-container"><canvas id="humidityGauge"></canvas></div>
+  <div id="humidity-history-container"><canvas id="humidityHistory"></canvas></div>
 
-<div id="humidity-history-container">
-    <canvas id="humidityHistory"></canvas>
-</div>
+  <div class="toggle-container">
+    <label><input type="checkbox" id="auto-toggle" /> Modalità automatica</label>
+  </div>
 
-<div class="toggle-container">
-    <label>
-        <input type="checkbox" id="auto-toggle" /> Modalità automatica
-    </label>
-</div>
-
-<hr>
-<div class="config-form card">
+  <hr>
+  <div class="config-form card">
     <h3><i class="fas fa-cogs"></i> Configurazione Dispositivo</h3>
 
     <fieldset>
-        <legend><i class="fas fa-wifi"></i> Wi-Fi</legend>
-        <label>SSID Wi-Fi:<input type="text" id="cfg-wifi_ssid" placeholder="Nome rete Wi-Fi" /></label>
-        <label>Password Wi-Fi:<input type="password" id="cfg-wifi_password" placeholder="Password" /></label>
+      <legend><i class="fas fa-wifi"></i> Wi‑Fi</legend>
+      <label>SSID Wi‑Fi: <input type="text" id="cfg-wifi_ssid" placeholder="Nome rete Wi‑Fi" /></label>
+      <label>Password Wi‑Fi: <input type="password" id="cfg-wifi_password" placeholder="Password" /></label>
     </fieldset>
 
     <fieldset>
-        <legend><i class="fas fa-network-wired"></i> MQTT</legend>
-        <label>Broker MQTT:<input type="text" id="cfg-mqtt_broker" /></label>
-        <label>Porta MQTT:<input type="number" id="cfg-mqtt_port" min="1" max="65535" /></label>
-        <label>Utente MQTT:<input type="text" id="cfg-mqtt_username" /></label>
-        <label>Password MQTT:<input type="password" id="cfg-mqtt_password" /></label>
+      <legend><i class="fas fa-network-wired"></i> MQTT</legend>
+      <label>Broker MQTT: <input type="text" id="cfg-mqtt_broker" /></label>
+      <label>Porta MQTT: <input type="number" id="cfg-mqtt_port" min="1" max="65535" /></label>
+      <label>Utente MQTT: <input type="text" id="cfg-mqtt_username" /></label>
+      <label>Password MQTT: <input type="password" id="cfg-mqtt_password" /></label>
     </fieldset>
 
     <fieldset>
-        <legend><i class="fas fa-microchip"></i> Pin</legend>
-        <label>Pin sensore umidità:<input type="number" id="cfg-sensor_pin" min="0" max="39" /></label>
-        <label>Pin pompa:<input type="number" id="cfg-pump_pin" min="0" max="39" /></label>
-        <label>Pin relè:<input type="number" id="cfg-relay_pin" min="0" max="39" /></label>
-        <label>Pin batteria (ADC):<input type="number" id="cfg-battery_pin" min="0" max="39" /></label>
+      <legend><i class="fas fa-microchip"></i> Pin</legend>
+      <label>Pin sensore umidità: <input type="number" id="cfg-sensor_pin" min="0" max="39" /></label>
+      <label>Pin pompa: <input type="number" id="cfg-pump_pin"   min="0" max="39" /></label>
+      <label>Pin relè:  <input type="number" id="cfg-relay_pin"  min="0" max="39" /></label>
+      <label>Pin batteria (ADC): <input type="number" id="cfg-battery_pin" min="0" max="39" /></label>
     </fieldset>
 
     <fieldset>
-        <legend><i class="fas fa-sliders-h"></i> Parametri</legend>
-        <label>Soglia irrigazione (%):<input type="number" id="cfg-moisture_threshold" min="0" max="100" /></label>
-        <label>Durata pompa (s):<input type="number" id="cfg-pump_duration" min="1" max="300" /></label>
-        <label>Intervallo lettura (ms):<input type="number" id="cfg-measurement_interval" step="1000" /></label>
-        <label><input type="checkbox" id="cfg-use_pump" /> Irrigazione automatica</label>
-        <label><input type="checkbox" id="cfg-debug" /> Debug seriale</label>
-        <label>Ore di Sleep:<input type="number" id="cfg-sleep_hours" min="0" max="24" /></label>
+      <legend><i class="fas fa-sliders-h"></i> Parametri</legend>
+      <label>Soglia irrigazione (%): <input type="number" id="cfg-moisture_threshold" min="0" max="100" /></label>
+      <label>Durata pompa (s): <input type="number" id="cfg-pump_duration" min="1" max="300" /></label>
+      <label>Intervallo lettura (ms): <input type="number" id="cfg-measurement_interval" step="1000" /></label>
+      <label><input type="checkbox" id="cfg-use_pump" /> Irrigazione automatica</label>
+      <label><input type="checkbox" id="cfg-debug" /> Debug seriale</label>
+      <label>Ore di Sleep: <input type="number" id="cfg-sleep_hours" min="0" max="24" /></label>
     </fieldset>
 
     <fieldset>
-        <legend><i class="fas fa-ethernet"></i> Rete</legend>
-        <label><input type="checkbox" id="cfg-use_dhcp" /> Usa DHCP</label>
-        <label>IP statico:<input type="text" id="cfg-ip_address" placeholder="192.168.x.x" /></label>
-        <label>Gateway:<input type="text" id="cfg-gateway" placeholder="192.168.x.1" /></label>
-        <label>Subnet:<input type="text" id="cfg-subnet" placeholder="255.255.255.0" /></label>
+      <legend><i class="fas fa-ethernet"></i> Rete</legend>
+      <label><input type="checkbox" id="cfg-use_dhcp" /> Usa DHCP</label>
+      <label>IP statico: <input type="text" id="cfg-ip_address" placeholder="192.168.x.x" /></label>
+      <label>Gateway:   <input type="text" id="cfg-gateway"   placeholder="192.168.x.1" /></label>
+      <label>Subnet:    <input type="text" id="cfg-subnet"    placeholder="255.255.255.0" /></label>
     </fieldset>
 
-    <button onclick="confermaSalvataggio()">💾 Salva Configurazione</button>
-</div>
-<hr>
-<div class="config-form card">
+    <button type="button" onclick="confermaSalvataggio()">💾 Salva Configurazione</button>
+  </div>
+
+  <hr>
+  <div class="config-form card">
     <h3><i class="fas fa-upload"></i> Aggiornamento Firmware OTA</h3>
     <form id="firmware-form">
-        <label>Seleziona file .bin da caricare:
-            <input type="file" name="firmware" accept=".bin" required />
-        </label>
-        <button type="submit">📤 Carica firmware</button>
+      <label>Seleziona file .bin da caricare:
+        <input type="file" name="firmware" accept=".bin" required />
+      </label>
+      <button type="submit">📤 Carica firmware</button>
     </form>
-</div>
+  </div>
 
-<!-- Modal conferma salvataggio -->
-<div id="confirm-modal" class="modal hidden">
+  <!-- Modal conferma salvataggio -->
+  <div id="confirm-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
     <div class="modal-content">
-        <h2>⚠️ Riavvio richiesto</h2>
-        <p>Salvando la configurazione il dispositivo si riavvierà.</p>
-        <button onclick="salvaConfigurazione()">Conferma</button>
-        <button onclick="chiudiModal()">Annulla</button>
+      <h2 id="confirm-title">⚠️ Riavvio richiesto</h2>
+      <p>Salvando la configurazione il dispositivo si riavvierà.</p>
+      <div class="modal-actions">
+        <button type="button" onclick="salvaConfigurazione()">Conferma</button>
+        <button type="button" onclick="chiudiModal()">Annulla</button>
+      </div>
     </div>
-</div>
+  </div>
 
-<!-- Modal autenticazione -->
-<div id="auth-modal" class="modal hidden">
+  <!-- Modal autenticazione -->
+  <div id="auth-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="auth-title">
     <div class="modal-content">
-        <h2>🔒 Autenticazione richiesta</h2>
-        <input type="password" id="auth-pin-input" placeholder="Inserisci PIN">
-        <button id="auth-submit-btn">Conferma</button>
+      <h2 id="auth-title">🔒 Autenticazione richiesta</h2>
+      <form id="auth-form" autocomplete="off">
+        <input type="password" id="auth-pin-input" placeholder="Inserisci PIN" inputmode="numeric" />
+        <div class="modal-actions">
+          <button id="auth-submit-btn" type="submit">Conferma</button>
+          <button type="button" onclick="chiudiAuth()">Annulla</button>
+        </div>
+      </form>
     </div>
-</div>
+  </div>
 
-<script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <!-- MQTT over WS -->
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 
-<script src="/main.js"></script>
-<script>
+  <!-- App -->
+  <script src="/main.js"></script>
+
+  <!-- SW (ora esiste /service-worker.js, niente più 404) -->
+  <script>
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.register('/service-worker.js')
-            .then(() => console.log('[PWA] Service Worker registrato'))
-            .catch(err => console.warn('[PWA] Service Worker fallito', err));
+      navigator.serviceWorker.register('/service-worker.js')
+        .then(() => console.log('[PWA] Service Worker registrato'))
+        .catch(err => console.warn('[PWA] Service Worker fallito', err));
     }
-</script>
+  </script>
 </body>
 </html>
