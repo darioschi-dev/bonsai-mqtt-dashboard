@@ -157,37 +157,49 @@ app.get('/api/config', async (_req, res) => {
     }
 });
 
-// POST config: salva + MQTT retained
-app.post('/api/config', express.json({limit: '256kb'}), async (req, res) => {
+// POST config: salva + MQTT (live / mailbox / both) con supporto per-device
+app.post('/api/config', express.json({ limit: '256kb' }), async (req, res) => {
     try {
         // 1) merge con default e validazione minima
-        const cfg = {...defaultDeviceConfig, ...(req.body || {})};
+        const cfg = { ...defaultDeviceConfig, ...(req.body || {}) };
         if (cfg.mqtt_port <= 0 || cfg.mqtt_port > 65535) {
-            return res.status(400).json({error: 'invalid_mqtt_port'});
+            return res.status(400).json({ error: 'invalid_mqtt_port' });
         }
 
-        // 2) salva su disco (audit/backup)
+        // 2) genera SEMPRE una versione di config (≠ firmware version)
+        const now = new Date();
+        const ts = now.toISOString().replace(/[-:TZ.]/g, '').slice(0, 14); // YYYYMMDDHHmmss
+        cfg.config_version = ts;
+
+        // 3) salva su disco (audit/backup) - include anche config_version
         await fsp.writeFile(configFile, JSON.stringify(cfg, null, 2), 'utf-8');
 
-         // 3) imposta una versione per la config (diversa dalla firmware version)
-             const now = new Date();
-         const ts = now.toISOString().replace(/[-:TZ.]/g, '').slice(0,14); // YYYYMMDDHHmmss
-         cfg.config_version = ts;
+        // 4) modalità (opzionale via query ?mode=live|mailbox|both)
+        const mode = String((req.query.mode || 'both')).toLowerCase();
+        const doLive = mode === 'live' || mode === 'both';
+        const doMailbox = mode === 'mailbox' || mode === 'both';
 
-             // 4) LIVE: prova ad applicare subito se il device è online (non-retained)
-                 await sendConfigUpdate(cfg);
+        // 5) targeting per-device (opzionale via ?device=bonsai-<mac>)
+        const device = typeof req.query.device === 'string' ? req.query.device.trim() : '';
 
-             // 5) MAILBOX: pubblica anche lo snapshot retained (per il prossimo wake)
-                 await publishRetained('bonsai/config', JSON.stringify(cfg));
-        // 4) (opzionale) eco stato lato dashboard: se vuoi che la UI rilegga subito la config
-        //    puoi lasciare che sia l'ESP a ripubblicare bonsai/config (retained),
-        //    altrimenti decommenta la riga sotto per “riempire” lo snapshot lato broker:
-        // await publishRetained('bonsai/config', JSON.stringify(cfg));
+        // 6) calcola i topic corretti
+        const liveTopic = device ? `bonsai/config/set/${device}` : 'bonsai/config/set';
+        const mailboxTopic = device ? `bonsai/config/${device}`   : 'bonsai/config';
 
-        return res.json({ok: true});
+        // 7) LIVE: prova ad applicare subito se il device è online (non-retained)
+        if (doLive) {
+            await sendConfigUpdate(cfg, { topic: liveTopic });
+        }
+
+        // 8) MAILBOX: pubblica lo snapshot retained (per il prossimo wake)
+        if (doMailbox) {
+            await publishRetained(mailboxTopic, JSON.stringify(cfg));
+        }
+
+        return res.json({ ok: true, mode, device: device || null, config_version: cfg.config_version });
     } catch (e: any) {
         console.error('❌ /api/config failed:', e?.message || e);
-        return res.status(500).json({error: 'config_write_or_publish_failed'});
+        return res.status(500).json({ error: 'config_write_or_publish_failed' });
     }
 });
 
@@ -204,15 +216,20 @@ app.post('/api/config/push', async (_req, res) => {
     }
 });
 
-// Admin: bonifica retained pericolosi
-app.post('/api/admin/clear-retained', async (_req, res) => {
+// Admin: bonifica retained pericolosi (opzionalmente per-device via ?device=)
+app.post('/api/admin/clear-retained', async (req, res) => {
     try {
-        await clearRetained('bonsai/command/pump'); // sempre
-        // opzionale:
-        // await clearRetained('bonsai/config'); // se vuoi cancellare lo snapshot
-        return res.json({ok: true});
+        const device = typeof req.query.device === 'string' ? req.query.device.trim() : '';
+        const pumpTopic = device ? `bonsai/command/pump/${device}` : 'bonsai/command/pump';
+        await clearRetained(pumpTopic);
+
+        // opzionale: anche lo snapshot config (normalmente sconsigliato)
+        // const cfgTopic = device ? `bonsai/config/${device}` : 'bonsai/config';
+        // await clearRetained(cfgTopic);
+
+        return res.json({ ok: true, device: device || null });
     } catch (e: any) {
-        return res.status(500).json({ok: false, error: e?.message || String(e)});
+        return res.status(500).json({ ok: false, error: e?.message || String(e) });
     }
 });
 

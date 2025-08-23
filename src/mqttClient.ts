@@ -218,8 +218,16 @@ export function clearRetained(topic: string): Promise<void> {
 export function sendPumpCommand(state: 'on' | 'off') {
     publishMqttCommand('bonsai/command/pump', state);
 }
+export function sendConfigUpdate(
+    partialConfig: Record<string, any>,
+    opts?: { topic?: string }
+) {
+    const topic = opts?.topic || 'bonsai/config/set';
+    publishMqttCommand(topic, JSON.stringify(partialConfig)); // NON retained
+}
 
-export function sendConfigUpdate(partialConfig: Record<string, any>) {
-    // IMPORTANTE: config/set NON deve essere retained
-    publishMqttCommand('bonsai/config/set', JSON.stringify(partialConfig));
+// (facoltativo, sugar)
+export function sendConfigUpdateToDevice(deviceId: string, partialConfig: Record<string, any>) {
+    const topic = `bonsai/config/set/${deviceId}`;
+    return sendConfigUpdate(partialConfig, { topic });
 }
