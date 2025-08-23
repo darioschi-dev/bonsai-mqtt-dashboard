@@ -8,7 +8,14 @@ import fsp from 'fs/promises';
 import crypto from 'crypto';
 import {fileURLToPath} from 'url';
 
-import {setupMqttClient, publishRetained, getLatestStatus, publishMqttCommand} from './mqttClient.js';
+import {
+    setupMqttClient,
+    publishRetained,
+    getLatestStatus,
+    publishMqttCommand,
+    sendConfigUpdate,
+    clearRetained
+} from './mqttClient.js';
 import {ensureMongoIndexes, getLatestLogs, getOtaAcks} from './dataLogger.js';
 
 // __dirname compat ESM
@@ -162,11 +169,20 @@ app.post('/api/config', express.json({limit: '256kb'}), async (req, res) => {
         // 2) salva su disco (audit/backup)
         await fsp.writeFile(configFile, JSON.stringify(cfg, null, 2), 'utf-8');
 
-        // 3) pubblica su MQTT retained (topic “config”)
-        await publishRetained('bonsai/config', JSON.stringify(cfg));
+         // 3) imposta una versione per la config (diversa dalla firmware version)
+             const now = new Date();
+         const ts = now.toISOString().replace(/[-:TZ.]/g, '').slice(0,14); // YYYYMMDDHHmmss
+         cfg.config_version = ts;
 
-        // 4) (opzionale) chiedi all’ESP di ricaricare subito
-        // await publishRetained('bonsai/command/reload_config', Date.now().toString());
+             // 4) LIVE: prova ad applicare subito se il device è online (non-retained)
+                 await sendConfigUpdate(cfg);
+
+             // 5) MAILBOX: pubblica anche lo snapshot retained (per il prossimo wake)
+                 await publishRetained('bonsai/config', JSON.stringify(cfg));
+        // 4) (opzionale) eco stato lato dashboard: se vuoi che la UI rilegga subito la config
+        //    puoi lasciare che sia l'ESP a ripubblicare bonsai/config (retained),
+        //    altrimenti decommenta la riga sotto per “riempire” lo snapshot lato broker:
+        // await publishRetained('bonsai/config', JSON.stringify(cfg));
 
         return res.json({ok: true});
     } catch (e: any) {
@@ -185,6 +201,18 @@ app.post('/api/config/push', async (_req, res) => {
         // se non esiste, manda default
         await publishRetained('bonsai/config', JSON.stringify(defaultDeviceConfig));
         return res.json({ok: true, default: true});
+    }
+});
+
+// Admin: bonifica retained pericolosi
+app.post('/api/admin/clear-retained', async (_req, res) => {
+    try {
+        await clearRetained('bonsai/command/pump'); // sempre
+        // opzionale:
+        // await clearRetained('bonsai/config'); // se vuoi cancellare lo snapshot
+        return res.json({ok: true});
+    } catch (e: any) {
+        return res.status(500).json({ok: false, error: e?.message || String(e)});
     }
 });
 
