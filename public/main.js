@@ -81,7 +81,7 @@ function millisToAgo(tsMs) {
 // ======= Pump control =======
 function controllaPompa(action) {
   requireAuth(() => {
-    fetch("/pump", {
+    fetch("/api/pump", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action }),

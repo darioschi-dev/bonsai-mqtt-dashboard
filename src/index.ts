@@ -8,7 +8,7 @@ import fsp from 'fs/promises';
 import crypto from 'crypto';
 import {fileURLToPath} from 'url';
 
-import {setupMqttClient, publishRetained, getLatestStatus} from './mqttClient.js';
+import {setupMqttClient, publishRetained, getLatestStatus, publishMqttCommand} from './mqttClient.js';
 import {ensureMongoIndexes, getLatestLogs, getOtaAcks} from './dataLogger.js';
 
 // __dirname compat ESM
@@ -24,6 +24,7 @@ const UPDATE_HOST = (process.env.UPDATE_HOST || 'bonsai-iot-update.darioschiavan
 const OTA_TOKEN = process.env.OTA_TOKEN || '';   // opzionale: auth bearer per /upload-firmware
 
 const app = express();
+app.use(express.json()); // per leggere { action: "on" | "off" }
 
 const configFile = path.resolve(__dirname, '..', 'uploads', 'config.json');
 
@@ -61,7 +62,7 @@ await fsp.mkdir(tmpDir, {recursive: true});
 // Multer salva direttamente nel volume condiviso
 const upload = multer({
     dest: tmpDir,
-    limits: { fileSize: 4 * 1024 * 1024 }, // 4 MB: ampio per ESP32
+    limits: {fileSize: 4 * 1024 * 1024}, // 4 MB: ampio per ESP32
     fileFilter: (_req, file, cb) => {
         // accettiamo "firmware" e (opzionale) "version_file"
         if (file.fieldname !== 'firmware' && file.fieldname !== 'version_file') {
@@ -98,6 +99,17 @@ app.use((req, res, next) => {
         return res.status(404).send('Not found');
     }
     return next();
+});
+
+/** Comando manuale pompa */
+app.post('/api/pump', (req, res) => {
+    const action = String(req.body?.action || '').toLowerCase(); // "on" | "off"
+    if (!['on', 'off'].includes(action)) {
+        return res.status(400).json({error: "Invalid 'action'. Use 'on' or 'off'."});
+    }
+    // Pubblica verso l’ESP32 (adegua topic/payload a ciò che il firmware ascolta)
+    publishMqttCommand('bonsai/command/pump', action.toUpperCase()); // ON | OFF
+    return res.json({ok: true});
 });
 
 /* ---------- API utili ---------- */
@@ -139,12 +151,12 @@ app.get('/api/config', async (_req, res) => {
 });
 
 // POST config: salva + MQTT retained
-app.post('/api/config', express.json({ limit: '256kb' }), async (req, res) => {
+app.post('/api/config', express.json({limit: '256kb'}), async (req, res) => {
     try {
         // 1) merge con default e validazione minima
-        const cfg = { ...defaultDeviceConfig, ...(req.body || {}) };
+        const cfg = {...defaultDeviceConfig, ...(req.body || {})};
         if (cfg.mqtt_port <= 0 || cfg.mqtt_port > 65535) {
-            return res.status(400).json({ error: 'invalid_mqtt_port' });
+            return res.status(400).json({error: 'invalid_mqtt_port'});
         }
 
         // 2) salva su disco (audit/backup)
@@ -156,10 +168,10 @@ app.post('/api/config', express.json({ limit: '256kb' }), async (req, res) => {
         // 4) (opzionale) chiedi all’ESP di ricaricare subito
         // await publishRetained('bonsai/command/reload_config', Date.now().toString());
 
-        return res.json({ ok: true });
+        return res.json({ok: true});
     } catch (e: any) {
         console.error('❌ /api/config failed:', e?.message || e);
-        return res.status(500).json({ error: 'config_write_or_publish_failed' });
+        return res.status(500).json({error: 'config_write_or_publish_failed'});
     }
 });
 
@@ -168,11 +180,11 @@ app.post('/api/config/push', async (_req, res) => {
     try {
         const buf = await fsp.readFile(configFile, 'utf-8');
         await publishRetained('bonsai/config', buf);
-        return res.json({ ok: true });
+        return res.json({ok: true});
     } catch {
         // se non esiste, manda default
         await publishRetained('bonsai/config', JSON.stringify(defaultDeviceConfig));
-        return res.json({ ok: true, default: true });
+        return res.json({ok: true, default: true});
     }
 });
 
@@ -182,13 +194,13 @@ let uploading = false;
 
 app.post('/upload-firmware',
     upload.fields([
-        { name: 'firmware', maxCount: 1 },
-        { name: 'version_file', maxCount: 1 }
+        {name: 'firmware', maxCount: 1},
+        {name: 'version_file', maxCount: 1}
     ]),
     async (req: Request, res: Response) => {
         console.log('[OTA] Inizio upload');
 
-        if (uploading) return res.status(409).json({ error: 'Upload già in corso' });
+        if (uploading) return res.status(409).json({error: 'Upload già in corso'});
         uploading = true;
 
         try {
@@ -196,14 +208,14 @@ app.post('/upload-firmware',
                 const auth = (req.headers.authorization || '').trim();
                 if (!auth.startsWith('Bearer ') || auth.slice(7) !== OTA_TOKEN) {
                     console.log('[OTA] Token non valido');
-                    return res.status(401).json({ error: 'Unauthorized' });
+                    return res.status(401).json({error: 'Unauthorized'});
                 }
             }
 
             const fw = (req.files as any)?.firmware?.[0];
             if (!fw) {
                 console.log('[OTA] Nessun file firmware');
-                return res.status(400).json({ error: 'File mancante (campo "firmware")' });
+                return res.status(400).json({error: 'File mancante (campo "firmware")'});
             }
             console.log('[OTA] File ricevuto:', fw.originalname, fw.size, 'bytes');
 
@@ -213,26 +225,27 @@ app.post('/upload-firmware',
             if (versionFile) {
                 try {
                     version = (await fsp.readFile(versionFile.path, 'utf-8')).trim();
-                } catch { /* ignora, si userà req.body.version */ }
+                } catch { /* ignora, si userà req.body.version */
+                }
             }
             if (!version) version = (req.body?.version || '').toString().trim();
 
             if (!version) {
                 console.log('[OTA] Version mancante');
-                return res.status(400).json({ error: 'Version mancante' });
+                return res.status(400).json({error: 'Version mancante'});
             }
 
             // Regex: semver (vX.Y.Z), timestamp (YYYYMMDDHHMM) o combined (vX.Y.Z+YYYYMMDDHHMM)
             const reSemver = /^v\d+\.\d+\.\d+$/;
-            const reTs     = /^\d{12}$/;
-            const reComb   = /^v\d+\.\d+\.\d+\+\d{12}$/;
+            const reTs = /^\d{12}$/;
+            const reComb = /^v\d+\.\d+\.\d+\+\d{12}$/;
 
             if (!(reSemver.test(version) || reTs.test(version) || reComb.test(version))) {
-                return res.status(400).json({ error: 'Version non valida. Attesi: vX.Y.Z | YYYYMMDDHHMM | vX.Y.Z+YYYYMMDDHHMM' });
+                return res.status(400).json({error: 'Version non valida. Attesi: vX.Y.Z | YYYYMMDDHHMM | vX.Y.Z+YYYYMMDDHHMM'});
             }
             // Limite pratico per campo version (esp_app_desc_t version è 32B incl. terminatore)
             if (version.length > 31) {
-                return res.status(400).json({ error: 'Version troppo lunga (max 31 caratteri)' });
+                return res.status(400).json({error: 'Version troppo lunga (max 31 caratteri)'});
             }
 
             // Move atomico nel medesimo FS
@@ -241,13 +254,13 @@ app.post('/upload-firmware',
 
             // SHA256 + size
             const sha256 = await sha256File(tmpAtomic);
-            const stat   = await fsp.stat(tmpAtomic);
+            const stat = await fsp.stat(tmpAtomic);
 
             // Rename finale
             await fsp.rename(tmpAtomic, binPath);
 
             const base = resolveBaseUrl(req);
-            const url  = `${base}/firmware/esp32.bin`;
+            const url = `${base}/firmware/esp32.bin`;
             const manifest = {
                 version, url, sha256, size: stat.size,
                 created_at: new Date().toISOString()
@@ -259,19 +272,25 @@ app.post('/upload-firmware',
             await publishRetained('bonsai/ota/available', JSON.stringify(manifest));
 
             console.log('[OTA] Success', version);
-            res.json({ success: true, manifest });
+            res.json({success: true, manifest});
         } catch (err: any) {
             console.error('❌ Errore upload OTA:', err?.message || err);
             // pulizia tmp
-            try { await fsp.rm(path.join(firmwareDir, `.esp32.bin.tmp`), { force: true }); } catch {}
-            res.status(500).json({ error: 'Errore interno upload OTA' });
+            try {
+                await fsp.rm(path.join(firmwareDir, `.esp32.bin.tmp`), {force: true});
+            } catch {
+            }
+            res.status(500).json({error: 'Errore interno upload OTA'});
         } finally {
             uploading = false;
             // cleanup multer tmp
             const files: any = req.files || {};
             for (const key of Object.keys(files)) {
                 for (const f of files[key] as Array<{ path: string }>) {
-                    try { if (f?.path && fs.existsSync(f.path)) await fsp.unlink(f.path); } catch {}
+                    try {
+                        if (f?.path && fs.existsSync(f.path)) await fsp.unlink(f.path);
+                    } catch {
+                    }
                 }
             }
         }
@@ -281,9 +300,15 @@ app.post('/upload-firmware',
 app.get('/api/firmware/version', async (_req, res) => {
     try {
         const data = JSON.parse(await fsp.readFile(manifestPath, 'utf-8'));
-        res.json({ version: data.version, size: data.size, sha256: data.sha256, url: data.url, created_at: data.created_at });
+        res.json({
+            version: data.version,
+            size: data.size,
+            sha256: data.sha256,
+            url: data.url,
+            created_at: data.created_at
+        });
     } catch {
-        res.status(404).json({ error: 'Manifest non trovato' });
+        res.status(404).json({error: 'Manifest non trovato'});
     }
 });
 
